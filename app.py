@@ -117,6 +117,23 @@ st.markdown("""
         font-size: 13px;
     }
 
+    /* ── Image prompt box (English / LTR) ── */
+    .ltr-output {
+        direction: ltr;
+        text-align: left;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.75;
+        background: #f0fff4;
+        padding: 16px 20px;
+        border-radius: 10px;
+        border-left: 4px solid #38a169;
+        color: #1a3a2a;
+        white-space: pre-wrap;
+        min-height: 50px;
+        margin-bottom: 2px;
+    }
+
     /* ── Refinement input area ── */
     .refine-box {
         background: #f0f2ff;
@@ -177,10 +194,11 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # SECTION PARSING
 # =============================================================
 SECTION_CONFIG = [
-    ("caption",  "📝", "כיתוב ראשי"),
-    ("hashtags", "#️⃣", "האשטגים"),
-    ("visual",   "🎬", "כיוון ויזואלי"),
-    ("story",    "📱", "גרסת סטורי"),
+    ("caption",      "📝", "כיתוב ראשי"),
+    ("hashtags",     "#️⃣", "האשטגים"),
+    ("visual",       "🎬", "כיוון ויזואלי"),
+    ("story",        "📱", "גרסת סטורי"),
+    ("image_prompt", "🖼️", "פרומפט לתמונה (AI)"),
 ]
 
 
@@ -188,10 +206,11 @@ def parse_content_sections(content: str) -> dict:
     """Split Claude output into named sections using emoji markers."""
     sections = {}
     marker_emojis = {
-        "caption":  ["📝"],
-        "hashtags": ["#️⃣", "️⃣", "#⃣"],
-        "visual":   ["🎬"],
-        "story":    ["📱"],
+        "caption":      ["📝"],
+        "hashtags":     ["#️⃣", "️⃣", "#⃣"],
+        "visual":       ["🎬"],
+        "story":        ["📱"],
+        "image_prompt": ["🖼️"],
     }
 
     positions = []
@@ -294,9 +313,10 @@ def display_content_sections(content: str, uid_prefix: str = "sec"):
         with col_btn:
             copy_button(text, uid=f"{uid_prefix}_{i}")
 
-        # Content box
+        # Content box — LTR for image prompts (English), RTL for everything else
+        css_class = "ltr-output" if key == "image_prompt" else "rtl-output"
         safe = html_lib.escape(text)
-        st.markdown(f'<div class="rtl-output">{safe}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="{css_class}">{safe}</div>', unsafe_allow_html=True)
 
         if i < len(SECTION_CONFIG) - 1:
             st.markdown(
@@ -493,7 +513,7 @@ def build_system_prompt(brand_key: str) -> str:
 כל פוסט צריך להרגיש כאילו כתב אותו מישהו שבאמת אוהב את הנושא.
 
 כשמתבקש לשנות או לשפר תוכן:
-- שמור על אותו פורמט (📝 כיתוב ראשי / #️⃣ האשטגים / 🎬 כיוון ויזואלי / 📱 גרסת סטורי)
+- שמור על אותו פורמט (📝 כיתוב ראשי / #️⃣ האשטגים / 🎬 כיוון ויזואלי / 📱 גרסת סטורי / 🖼️ פרומפט לתמונה)
 - אלא אם התבקשת במפורש לשנות את הפורמט
 - החזר את הפוסט המעודכן במלואו, מוכן לפרסום
 {_build_knowledge_base_section(brand)}"""
@@ -596,8 +616,13 @@ def build_initial_user_prompt(
 📱 גרסת סטורי (קצרה)
 גרסה מקוצרת ומדויקת לסטורי (1-3 שורות + CTA).
 
+🖼️ פרומפט לתמונה (AI Image Generator)
+Write in English. A detailed, ready-to-use prompt for an AI image generator (Midjourney / DALL-E / Artlist / Canva).
+Include: subject, style, mood, lighting, colors, composition. Make it on-brand for {brand['name']}.
+Format: one flowing paragraph, max 80 words.
+
 ---
-כתוב בעברית בלבד. שמור על הטון האותנטי של {brand['name']}.
+כתוב בעברית בלבד (חוץ מהפרומפט לתמונה שהוא באנגלית). שמור על הטון האותנטי של {brand['name']}.
 """
 
 
