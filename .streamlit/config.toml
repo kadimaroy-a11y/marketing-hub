@@ -1,0 +1,11 @@
+[server]
+# Streamlit Cloud will set its own port — this is for local dev only
+headless = true
+enableCORS = false
+
+[theme]
+base = "light"
+primaryColor = "#6c63ff"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f4f4fb"
+textColor = "#1a1a2e"
