@@ -224,6 +224,9 @@ with col_sel:
             label_visibility="collapsed",
         )
         if chosen_key != st.session_state.bm_selected_key:
+            # Clear web-sources state for the old brand so new brand loads fresh
+            old_src_key = f"{st.session_state.bm_selected_key}_src_list"
+            st.session_state.pop(old_src_key, None)
             st.session_state.bm_selected_key   = chosen_key
             st.session_state.bm_delete_confirm = False
             st.session_state.bm_save_ok        = False
@@ -308,7 +311,7 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
         st.session_state.bm_save_ok = False
 
     # ── TABS ─────────────────────────────────────────────────
-    tabs = st.tabs(["🏷️ בסיס", "📦 מוצרים", "👥 קהל יעד", "🎤 קול המותג", "📱 פלטפורמות", "🧠 בסיס ידע"])
+    tabs = st.tabs(["🏷️ בסיס", "📦 מוצרים", "👥 קהל יעד", "🎤 קול המותג", "📱 פלטפורמות", "🧠 בסיס ידע", "🌐 מקורות אינטרנט"])
 
     # ════════════════════════════════════════════════════════
     # TAB 1: Basic Info
@@ -499,6 +502,92 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ════════════════════════════════════════════════════════
+    # TAB 7: Web Sources 🌐
+    # ════════════════════════════════════════════════════════
+    with tabs[6]:
+        st.markdown("#### 🌐 מקורות אינטרנט — הסוכן יקרא אלה לפני כל יצירת תוכן")
+        st.caption(
+            "הוסף כתובות URL שהסוכן יסרוק לפני כל פוסט — אתר המותג, חדשות, דפי מוצר. "
+            "בכל מקור ציין **מה לחפש** ומה **להתעלם** ממנו."
+        )
+
+        # Initialise source list in session state (once per brand load)
+        src_key = f"{sk}_src_list"
+        if src_key not in st.session_state:
+            import copy
+            st.session_state[src_key] = copy.deepcopy(brand.get("web_sources", []))
+
+        sources_list = st.session_state[src_key]
+
+        # ── Existing sources ──────────────────────────────
+        if not sources_list:
+            st.info("אין מקורות עדיין. לחץ ➕ להוסיף מקור ראשון.")
+
+        for i, src in enumerate(sources_list):
+            active_icon = "✅" if src.get("active", True) else "⏸️"
+            label       = src.get("name") or src.get("url") or f"מקור {i+1}"
+            with st.expander(f"{active_icon} {label}", expanded=not src.get("url")):
+
+                row1c1, row1c2 = st.columns([1, 6])
+                with row1c1:
+                    new_active = st.checkbox(
+                        "פעיל", value=src.get("active", True),
+                        key=f"{sk}_src_{i}_active",
+                    )
+                with row1c2:
+                    new_name = st.text_input(
+                        "שם המקור", value=src.get("name", ""),
+                        placeholder="לדוגמה: אתר מיסט / Razor Facebook Israel",
+                        key=f"{sk}_src_{i}_name",
+                    )
+
+                new_url = st.text_input(
+                    "🔗 URL", value=src.get("url", ""),
+                    placeholder="https://myst.co.il",
+                    key=f"{sk}_src_{i}_url",
+                )
+
+                fc1, fc2 = st.columns(2)
+                with fc1:
+                    st.text_input(
+                        "🔍 מה לחפש",
+                        value=src.get("focus", ""),
+                        placeholder="מוצרים חדשים, מחירים, מבצעים",
+                        key=f"{sk}_src_{i}_focus",
+                    )
+                with fc2:
+                    st.text_input(
+                        "🚫 מה להתעלם",
+                        value=src.get("ignore", ""),
+                        placeholder="מוצרים לא ישראליים, מידע ישן",
+                        key=f"{sk}_src_{i}_ignore",
+                    )
+
+                if st.button(f"🗑️ מחק מקור זה", key=f"{sk}_src_{i}_del"):
+                    sources_list.pop(i)
+                    st.rerun()
+
+        # ── Add new source button ─────────────────────────
+        st.markdown("")
+        if st.button("➕ הוסף מקור חדש", use_container_width=True):
+            sources_list.append({
+                "active": True, "name": "", "url": "", "focus": "", "ignore": "",
+            })
+            st.rerun()
+
+        # ── Help tip ──────────────────────────────────────
+        with st.expander("💡 טיפים למקורות טובים"):
+            st.markdown("""
+| סוג | דוגמה לURL | מה לכתוב ב"מה לחפש" |
+|-----|-----------|-------------------|
+| **אתר המותג** | `myst.co.il` | מוצרים חדשים, מחירים, מבצעים |
+| **דף פייסבוק** | `facebook.com/RazorIsrael` | פוסטים חדשים, מוצרים |
+| **אתר חדשות** | `ign.com/news` | טרנדים, הודעות חדשות |
+| **מתחרה** | `competitor.co.il` | מה הם מפרסמים השבוע |
+| **דף מוצר** | `amazon.co.il/product/...` | מחיר, זמינות, ביקורות |
+            """)
+
+    # ════════════════════════════════════════════════════════
     # SAVE & DELETE BUTTONS
     # ════════════════════════════════════════════════════════
     st.markdown("---")
@@ -507,6 +596,25 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
     with col_save:
         if st.button("💾 שמור מותג", type="primary", use_container_width=True):
             updated = collect_brand_from_form(sk, brand)
+
+            # ── Collect web sources from dynamic list ─────
+            src_key      = f"{sk}_src_list"
+            raw_sources  = st.session_state.get(src_key, brand.get("web_sources", []))
+            saved_sources = []
+            for i in range(len(raw_sources)):
+                url_val = st.session_state.get(f"{sk}_src_{i}_url",
+                          raw_sources[i].get("url", ""))
+                if str(url_val).strip():
+                    saved_sources.append({
+                        "active": bool(st.session_state.get(f"{sk}_src_{i}_active", True)),
+                        "name":   str(st.session_state.get(f"{sk}_src_{i}_name",  raw_sources[i].get("name", ""))),
+                        "url":    str(url_val).strip(),
+                        "focus":  str(st.session_state.get(f"{sk}_src_{i}_focus", raw_sources[i].get("focus", ""))),
+                        "ignore": str(st.session_state.get(f"{sk}_src_{i}_ignore",raw_sources[i].get("ignore", ""))),
+                    })
+            updated["web_sources"] = saved_sources
+            st.session_state[src_key] = saved_sources   # sync state
+
             save_brand(sk, updated)
             st.session_state.bm_save_ok        = True
             st.session_state.bm_delete_confirm = False

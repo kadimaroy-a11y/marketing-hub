@@ -15,6 +15,7 @@ import html as html_lib
 from dotenv import load_dotenv
 from db import load_brands
 from brand_profiles import CONTENT_TYPES, BRAND_PROFILES as _FALLBACK_PROFILES
+from web_reader import get_brand_awareness
 
 # Load brands from JSON database; fall back to brand_profiles.py if db is empty
 BRAND_PROFILES = load_brands() or _FALLBACK_PROFILES
@@ -434,7 +435,7 @@ def display_full_history_for_streaming(messages_list: list):
 # =============================================================
 # PROMPT BUILDERS (unchanged from v2.0)
 # =============================================================
-def build_system_prompt(brand_key: str) -> str:
+def build_system_prompt(brand_key: str, web_awareness: str = "") -> str:
     brand = BRAND_PROFILES[brand_key]
 
     products_str = "\n".join([f"  • {p}" for p in brand["products"]])
@@ -516,7 +517,7 @@ def build_system_prompt(brand_key: str) -> str:
 - שמור על אותו פורמט (📝 כיתוב ראשי / #️⃣ האשטגים / 🎬 כיוון ויזואלי / 📱 גרסת סטורי / 🖼️ פרומפט לתמונה)
 - אלא אם התבקשת במפורש לשנות את הפורמט
 - החזר את הפוסט המעודכן במלואו, מוכן לפרסום
-{_build_knowledge_base_section(brand)}"""
+{_build_knowledge_base_section(brand)}{_build_web_awareness_section(web_awareness)}"""
 
 
 def _build_knowledge_base_section(brand: dict) -> str:
@@ -561,6 +562,20 @@ def _build_knowledge_base_section(brand: dict) -> str:
         " ידע נצבר מניסיון הצוות\n"
         "═══════════════════════════════════════\n\n" +
         "\n\n".join(sections)
+    )
+
+
+def _build_web_awareness_section(awareness: str) -> str:
+    """Inject live web scan results into the system prompt if available."""
+    if not awareness or not awareness.strip():
+        return ""
+    return (
+        "\n\n═══════════════════════════════════════\n"
+        " 🌐 מה קורה עכשיו — נסרק ממקורות המותג\n"
+        "═══════════════════════════════════════\n\n"
+        "המידע הבא נסרק זה עתה מהמקורות המאושרים של המותג.\n"
+        "השתמש בו כדי להפוך את התוכן לרלוונטי ועדכני:\n\n"
+        + awareness
     )
 
 
@@ -796,16 +811,28 @@ with col_output:
 
     # ══ CASE 1: Generate initial content ══════════════════════
     if generate and can_generate:
-        system_prompt = build_system_prompt(selected_brand_key)
+
+        # ── Phase 2: scan web sources if configured ───────
+        web_awareness   = ""
+        active_sources  = [
+            s for s in selected_brand.get("web_sources", [])
+            if s.get("active", True) and str(s.get("url", "")).strip()
+        ]
+        if active_sources:
+            with st.spinner(f"🌐 סורק {len(active_sources)} מקור{'ות' if len(active_sources) > 1 else ''} מידע..."):
+                web_awareness = get_brand_awareness(selected_brand)
+
+        system_prompt = build_system_prompt(selected_brand_key, web_awareness=web_awareness)
         user_prompt   = build_initial_user_prompt(
             selected_brand_key, selected_platform, selected_content_type,
             brief, additional_notes, num_versions,
         )
 
+        scan_note = f" · 🌐 {len(active_sources)} מקורות נסרקו" if active_sources else ""
         st.caption(
             f"יוצר **{CONTENT_TYPES[selected_content_type]['label']}** "
             f"עבור **{selected_brand['name']}** "
-            f"על **{platform_display[selected_platform]}** ..."
+            f"על **{platform_display[selected_platform]}** ...{scan_note}"
         )
 
         st.session_state.system_prompt  = system_prompt

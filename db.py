@@ -53,6 +53,9 @@ EMPTY_BRAND = {
         "team_notes":        [],
         "approved_hashtags": [],
     },
+    # Phase 2 — Web Awareness: list of curated URLs the agent reads before generating
+    # Each entry: { "active": bool, "name": str, "url": str, "focus": str, "ignore": str }
+    "web_sources": [],
 }
 
 
