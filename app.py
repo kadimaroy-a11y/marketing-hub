@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from db import load_brands
 from brand_profiles import CONTENT_TYPES, BRAND_PROFILES as _FALLBACK_PROFILES
 from web_reader import get_brand_awareness
+from content_db import add_to_library
 
 # Load brands from JSON database; fall back to brand_profiles.py if db is empty
 BRAND_PROFILES = load_brands() or _FALLBACK_PROFILES
@@ -178,9 +179,13 @@ def init_session():
         "approved":           False,
         "pending_refinement": None,
         "saved_brand":        "",
+        "saved_brand_key":    "",
+        "saved_brand_emoji":  "",
         "saved_platform":     "",
         "saved_type":         "",
+        "saved_brief":        "",
         "input_counter":      0,   # incremented to clear refinement textarea
+        "library_saved":      False,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -688,9 +693,13 @@ with col_controls:
             st.session_state.approved           = False
             st.session_state.pending_refinement = None
             st.session_state.saved_brand        = ""
+            st.session_state.saved_brand_key    = ""
+            st.session_state.saved_brand_emoji  = ""
             st.session_state.saved_platform     = ""
             st.session_state.saved_type         = ""
+            st.session_state.saved_brief        = ""
             st.session_state.input_counter      = 0
+            st.session_state.library_saved      = False
             st.rerun()
         st.divider()
 
@@ -835,11 +844,15 @@ with col_output:
             f"על **{platform_display[selected_platform]}** ...{scan_note}"
         )
 
-        st.session_state.system_prompt  = system_prompt
-        st.session_state.api_messages   = [{"role": "user", "content": user_prompt}]
-        st.session_state.saved_brand    = selected_brand["name"]
-        st.session_state.saved_platform = platform_display[selected_platform]
-        st.session_state.saved_type     = CONTENT_TYPES[selected_content_type]["label"]
+        st.session_state.system_prompt     = system_prompt
+        st.session_state.api_messages      = [{"role": "user", "content": user_prompt}]
+        st.session_state.saved_brand       = selected_brand["name"]
+        st.session_state.saved_brand_key   = selected_brand_key
+        st.session_state.saved_brand_emoji = selected_brand.get("emoji", "🏢")
+        st.session_state.saved_platform    = platform_display[selected_platform]
+        st.session_state.saved_type        = CONTENT_TYPES[selected_content_type]["label"]
+        st.session_state.saved_brief       = brief.strip()
+        st.session_state.library_saved     = False
 
         response_text = do_stream(
             st.session_state.api_messages, system_prompt, use_thinking=True,
@@ -968,6 +981,28 @@ with col_output:
 
         if st.session_state.approved:
             st.success("✅ תוכן אושר! מוכן לפרסום.")
+
+            # ── Save to library ───────────────────────────
+            if st.session_state.library_saved:
+                st.info("📚 נשמר בספריית התוכן!")
+            else:
+                if st.button(
+                    "📚 שמור לספריית התוכן", type="primary",
+                    use_container_width=True,
+                ):
+                    add_to_library({
+                        "brand_key":     st.session_state.saved_brand_key,
+                        "brand_name":    st.session_state.saved_brand,
+                        "brand_emoji":   st.session_state.saved_brand_emoji,
+                        "platform":      st.session_state.saved_platform,
+                        "content_type":  st.session_state.saved_type,
+                        "brief":         st.session_state.saved_brief,
+                        "content":       st.session_state.latest_content,
+                        "notes":         "",
+                    })
+                    st.session_state.library_saved = True
+                    st.rerun()
+
             st.download_button(
                 "⬇️ הורד תוכן מאושר",
                 data=st.session_state.latest_content,
@@ -976,7 +1011,6 @@ with col_output:
                 ),
                 mime="text/plain",
                 use_container_width=True,
-                type="primary",
             )
         else:
             col_approve, col_save = st.columns(2)
