@@ -13,6 +13,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from content_db import load_library, delete_from_library, update_notes, get_library_stats
 from db import load_brands
+from translations import get_t, get_section_config
 
 st.set_page_config(
     page_title="📚 Content Library",
@@ -22,51 +23,92 @@ st.set_page_config(
 )
 
 # =============================================================
-# STYLING
+# LANGUAGE SETUP
 # =============================================================
-st.markdown("""
+if "lang" not in st.session_state:
+    st.session_state.lang = "he"
+
+lang = st.session_state.lang
+t    = get_t(lang)
+D    = t["dir"]
+A    = t["align"]
+
+SECTION_CONFIG = get_section_config(lang)
+
+# =============================================================
+# LANGUAGE TOGGLE — sidebar
+# =============================================================
+with st.sidebar:
+    st.markdown("---")
+    lc = st.radio(
+        t["lang_toggle_label"],
+        options=["עב", "EN"],
+        index=0 if lang == "he" else 1,
+        horizontal=True,
+        key="cl_lang_radio",
+        label_visibility="visible",
+    )
+    new_lang = "he" if lc == "עב" else "en"
+    if new_lang != lang:
+        st.session_state.lang = new_lang
+        st.rerun()
+
+# =============================================================
+# STYLING
+# UI chrome follows language direction; content boxes always RTL
+# =============================================================
+st.markdown(f"""
 <style>
     label,
     .stCaption p,
-    [data-testid="stMarkdownContainer"] p {
-        direction: rtl !important;
-        text-align: right !important;
-    }
+    [data-testid="stMarkdownContainer"] p {{
+        direction: {D} !important;
+        text-align: {A} !important;
+    }}
     [data-testid="stMainBlockContainer"] h1,
     [data-testid="stMainBlockContainer"] h2,
-    [data-testid="stMainBlockContainer"] h3 {
-        direction: rtl; text-align: right;
-    }
-    [data-testid="stAlert"] { direction: rtl; text-align: right; }
+    [data-testid="stMainBlockContainer"] h3 {{
+        direction: {D}; text-align: {A};
+    }}
+    [data-testid="stAlert"] {{ direction: {D}; text-align: {A}; }}
 
-    .content-card {
+    .content-card {{
         background: #fafbff;
         border-radius: 12px;
         padding: 16px 20px;
         margin-bottom: 14px;
         border-right: 4px solid #6c63ff;
-        direction: rtl;
-        text-align: right;
-    }
-    .card-meta {
+        direction: {D};
+        text-align: {A};
+    }}
+    .card-meta {{
         font-size: 12px;
         color: #999;
-        direction: rtl;
-        text-align: right;
+        direction: {D};
+        text-align: {A};
         margin-bottom: 8px;
-    }
-    .card-brief {
+    }}
+    .card-brief {{
         font-size: 14px;
         color: #555;
         background: #f0f2ff;
         padding: 8px 12px;
         border-radius: 8px;
-        direction: rtl;
-        text-align: right;
+        direction: {D};
+        text-align: {A};
         margin-bottom: 10px;
         font-style: italic;
-    }
-    .section-box {
+    }}
+    .section-label {{
+        font-size: 13px;
+        font-weight: 700;
+        color: #4a4a8a;
+        direction: {D};
+        text-align: {A};
+        margin: 10px 0 4px 0;
+    }}
+    /* Generated content ALWAYS RTL — content is Hebrew */
+    .section-box {{
         direction: rtl;
         text-align: right;
         font-family: Arial, Helvetica, sans-serif;
@@ -79,8 +121,9 @@ st.markdown("""
         color: #1a1a2e;
         white-space: pre-wrap;
         margin-bottom: 6px;
-    }
-    .section-box-img {
+    }}
+    /* Image prompts always LTR (English) */
+    .section-box-img {{
         direction: ltr;
         text-align: left;
         font-family: 'Courier New', monospace;
@@ -93,16 +136,8 @@ st.markdown("""
         color: #1a3a2a;
         white-space: pre-wrap;
         margin-bottom: 6px;
-    }
-    .section-label {
-        font-size: 13px;
-        font-weight: 700;
-        color: #4a4a8a;
-        direction: rtl;
-        text-align: right;
-        margin: 10px 0 4px 0;
-    }
-    .empty-state {
+    }}
+    .empty-state {{
         background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
         border-radius: 12px;
         padding: 60px 30px;
@@ -113,8 +148,8 @@ st.markdown("""
         flex-direction: column;
         align-items: center;
         justify-content: center;
-    }
-    footer { visibility: hidden; }
+    }}
+    footer {{ visibility: hidden; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,14 +157,6 @@ st.markdown("""
 # =============================================================
 # HELPERS
 # =============================================================
-SECTION_CONFIG = [
-    ("caption",      "📝", "כיתוב ראשי"),
-    ("hashtags",     "#️⃣", "האשטגים"),
-    ("visual",       "🎬", "כיוון ויזואלי"),
-    ("story",        "📱", "גרסת סטורי"),
-    ("image_prompt", "🖼️", "פרומפט לתמונה (AI)"),
-]
-
 MARKER_EMOJIS = {
     "caption":      ["📝"],
     "hashtags":     ["#️⃣", "️⃣", "#⃣"],
@@ -160,31 +187,35 @@ def parse_sections(content: str) -> dict:
     return sections
 
 
-def copy_btn(text: str, uid: str):
+def copy_btn(text: str, uid: str, copy_label: str = "📋 העתק", copied_label: str = "✅ הועתק!"):
     safe = json.dumps(text)
+    cl   = json.dumps(copy_label)
+    cpl  = json.dumps(copied_label)
     bid  = f"cbtn_{uid}"
     components.html(f"""
     <button id="{bid}"
         onclick="
             var t={safe};
+            var cl={cl};
+            var cpl={cpl};
             var b=document.getElementById('{bid}');
             if(navigator.clipboard&&navigator.clipboard.writeText){{
                 navigator.clipboard.writeText(t).then(function(){{
-                    b.innerHTML='✅ הועתק!';b.style.background='#4CAF50';
-                    setTimeout(function(){{b.innerHTML='📋 העתק';b.style.background='#6c63ff';}},2000);
+                    b.innerHTML=cpl;b.style.background='#4CAF50';
+                    setTimeout(function(){{b.innerHTML=cl;b.style.background='#6c63ff';}},2000);
                 }});
             }}else{{
                 var e=document.createElement('textarea');e.value=t;
                 e.style.position='fixed';e.style.opacity='0';
                 document.body.appendChild(e);e.select();
                 document.execCommand('copy');document.body.removeChild(e);
-                b.innerHTML='✅ הועתק!';
-                setTimeout(function(){{b.innerHTML='📋 העתק';}},2000);
+                b.innerHTML=cpl;
+                setTimeout(function(){{b.innerHTML=cl;}},2000);
             }}
         "
         style="background:#6c63ff;color:white;border:none;padding:4px 12px;
                border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial;"
-    >📋 העתק</button>
+    >{copy_label}</button>
     """, height=32, scrolling=False)
 
 
@@ -199,8 +230,8 @@ def format_date(iso_str: str) -> str:
 # =============================================================
 # PAGE HEADER
 # =============================================================
-st.markdown("# 📚 ספריית תוכן")
-st.markdown("כל התכנים שאושרו ונשמרו — מוכנים לשימוש חוזר בכל עת.")
+st.markdown(f"# {t['cl_title']}")
+st.markdown(t["cl_subtitle"])
 st.divider()
 
 # =============================================================
@@ -214,9 +245,9 @@ brands    = load_brands()
 # =============================================================
 stats = get_library_stats()
 col_stat1, col_stat2, col_stat3 = st.columns(3)
-col_stat1.metric("סה״כ פריטים שמורים", stats["total"])
-col_stat2.metric("מותגים עם תוכן",     stats["brands"])
-col_stat3.metric("זמינים לשימוש",      stats["total"])
+col_stat1.metric(t["cl_total_metric"],     stats["total"])
+col_stat2.metric(t["cl_brands_metric"],    stats["brands"])
+col_stat3.metric(t["cl_available_metric"], stats["total"])
 
 st.markdown("")
 
@@ -224,33 +255,33 @@ f1, f2, f3, f4 = st.columns([3, 2, 2, 2])
 
 with f1:
     search_term = st.text_input(
-        "🔍 חיפוש",
-        placeholder="חפש לפי בריף, מותג, תוכן...",
+        "🔍",
+        placeholder=t["cl_search_placeholder"],
         label_visibility="collapsed",
     )
 
 # Brand filter
-brand_options = {"all": "📋 כל המותגים"}
+brand_options = {"all": t["cl_all_brands"]}
 for k, v in brands.items():
     brand_options[k] = f"{v.get('emoji','🏢')} {v.get('name', k)}"
 
 with f2:
     filter_brand = st.selectbox(
-        "מותג", options=list(brand_options.keys()),
+        "brand", options=list(brand_options.keys()),
         format_func=lambda x: brand_options[x],
         label_visibility="collapsed",
     )
 
 # Platform filter
 platform_options = {
-    "all":       "📡 כל הפלטפורמות",
+    "all":       t["cl_all_platforms"],
     "Instagram": "📸 Instagram",
     "TikTok":    "🎵 TikTok",
     "Facebook":  "👥 Facebook",
 }
 with f3:
     filter_platform = st.selectbox(
-        "פלטפורמה", options=list(platform_options.keys()),
+        "platform", options=list(platform_options.keys()),
         format_func=lambda x: platform_options[x],
         label_visibility="collapsed",
     )
@@ -258,8 +289,8 @@ with f3:
 # Sort
 with f4:
     sort_order = st.selectbox(
-        "מיון", options=["newest", "oldest"],
-        format_func=lambda x: "🆕 החדש ביותר" if x == "newest" else "🕰️ הישן ביותר",
+        "sort", options=["newest", "oldest"],
+        format_func=lambda x: t["cl_newest"] if x == "newest" else t["cl_oldest"],
         label_visibility="collapsed",
     )
 
@@ -297,23 +328,23 @@ if sort_order == "oldest":
 # =============================================================
 if not filtered:
     if not all_items:
-        st.markdown("""
+        st.markdown(f"""
         <div class="empty-state">
             <div style="font-size:60px;margin-bottom:16px;">📚</div>
-            <div style="font-size:20px;color:#888;font-weight:600;">הספרייה ריקה</div>
-            <div style="font-size:14px;color:#bbb;margin-top:10px;direction:rtl;">
-                צור תוכן בדף הראשי → אשר אותו → לחץ "שמור לספריית התוכן"
+            <div style="font-size:20px;color:#888;font-weight:600;">{t['cl_empty_title']}</div>
+            <div style="font-size:14px;color:#bbb;margin-top:10px;direction:{D};">
+                {t['cl_empty_sub']}
             </div>
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.info("לא נמצאו פריטים התואמים לסינון הנוכחי.")
+        st.info(t["cl_no_filter_match"])
     st.stop()
 
 # =============================================================
 # CONTENT CARDS
 # =============================================================
-st.markdown(f"**{len(filtered)} פריטים**")
+st.markdown(f"**{t['cl_items_count'].format(n=len(filtered))}**")
 
 for item in filtered:
     item_id = item.get("id", "")
@@ -332,7 +363,7 @@ for item in filtered:
 
         # Meta row
         st.markdown(
-            f'<div class="card-meta">📅 נשמר: {saved} &nbsp;|&nbsp; '
+            f'<div class="card-meta">{t["cl_saved_label"]} {saved} &nbsp;|&nbsp; '
             f'📡 {plat} &nbsp;|&nbsp; 📄 {ctype}</div>',
             unsafe_allow_html=True,
         )
@@ -361,7 +392,12 @@ for item in filtered:
                         unsafe_allow_html=True,
                     )
                 with col_b:
-                    copy_btn(text, uid=f"{item_id}_{key}")
+                    copy_btn(
+                        text,
+                        uid=f"{item_id}_{key}",
+                        copy_label=t["cl_copy_btn"],
+                        copied_label=t["cl_copied_btn"],
+                    )
 
                 css = "section-box-img" if key == "image_prompt" else "section-box"
                 safe_text = html_lib.escape(text)
@@ -379,26 +415,31 @@ for item in filtered:
 
         # Copy all button
         st.markdown("")
-        copy_btn(content, uid=f"{item_id}_all")
-        st.caption("^ העתק תוכן מלא")
+        copy_btn(
+            content,
+            uid=f"{item_id}_all",
+            copy_label=t["cl_copy_btn"],
+            copied_label=t["cl_copied_btn"],
+        )
+        st.caption(t["cl_copy_full_caption"])
 
         # Notes
         st.markdown("")
         new_notes = st.text_area(
-            "📝 הערות אישיות",
+            t["cl_notes_label"],
             value=notes,
-            placeholder="לדוגמה: השתמשנו בזה ב-03/03, קיבל 200 לייקים...",
+            placeholder=t["cl_notes_placeholder"],
             height=70,
             key=f"notes_{item_id}",
             label_visibility="visible",
         )
         nc1, nc2 = st.columns([2, 1])
         with nc1:
-            if st.button("💾 שמור הערה", key=f"save_notes_{item_id}"):
+            if st.button(t["cl_save_notes_btn"], key=f"save_notes_{item_id}"):
                 update_notes(item_id, new_notes)
-                st.success("✅ הערה נשמרה!")
+                st.success(t["cl_notes_saved"])
         with nc2:
-            if st.button("🗑️ מחק פריט", key=f"del_{item_id}"):
+            if st.button(t["cl_delete_btn"], key=f"del_{item_id}"):
                 delete_from_library(item_id)
                 st.rerun()
 
@@ -406,4 +447,4 @@ for item in filtered:
 # FOOTER
 # =============================================================
 st.divider()
-st.caption(f"📚 ספריית תוכן · {len(all_items)} פריטים שמורים · Marketing Hub")
+st.caption(t["cl_footer"].format(n=len(all_items)))
