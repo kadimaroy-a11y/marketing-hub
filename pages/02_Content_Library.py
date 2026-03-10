@@ -13,6 +13,9 @@ import streamlit as st
 import streamlit.components.v1 as components
 from content_db import load_library, delete_from_library, update_notes, get_library_stats
 from db import load_brands
+import importlib, sys
+if "translations" in sys.modules:
+    importlib.reload(sys.modules["translations"])
 from translations import get_t, get_section_config
 
 st.set_page_config(
@@ -41,7 +44,7 @@ SECTION_CONFIG = get_section_config(lang)
 with st.sidebar:
     st.markdown("---")
     lc = st.radio(
-        t["lang_toggle_label"],
+        t.get("lang_toggle_label", "🌐"),
         options=["עב", "EN"],
         index=0 if lang == "he" else 1,
         horizontal=True,

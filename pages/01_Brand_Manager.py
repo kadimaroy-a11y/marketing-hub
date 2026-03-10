@@ -10,6 +10,9 @@ from db import (
     load_brands, save_brand, delete_brand,
     brand_key_from_name, get_brand_with_defaults, EMPTY_BRAND
 )
+import importlib, sys
+if "translations" in sys.modules:
+    importlib.reload(sys.modules["translations"])
 from translations import get_t
 
 st.set_page_config(
@@ -36,7 +39,7 @@ A    = t["align"]
 with st.sidebar:
     st.markdown("---")
     lc = st.radio(
-        t["lang_toggle_label"],
+        t.get("lang_toggle_label", "🌐"),
         options=["עב", "EN"],
         index=0 if lang == "he" else 1,
         horizontal=True,
