@@ -1,9 +1,9 @@
 # =============================================================
-# 🚀 MARKETING HUB — Main Application v2.1 (Chat + Sections)
+# 🚀 MARKETING HUB — Main Application v3.0
 # =============================================================
 # Powered by Claude AI
 # Built for: Pupik Group — Myst & Prime51
-# v2.1: Inline chat refinement + parsed section boxes with copy
+# v3.0: Full HEB/EN language toggle + all previous features
 # =============================================================
 
 import json
@@ -17,6 +17,7 @@ from db import load_brands
 from brand_profiles import CONTENT_TYPES, BRAND_PROFILES as _FALLBACK_PROFILES
 from web_reader import get_brand_awareness
 from content_db import add_to_library
+from translations import get_t, get_section_config
 
 # Load brands from JSON database; fall back to brand_profiles.py if db is empty
 BRAND_PROFILES = load_brands() or _FALLBACK_PROFILES
@@ -29,142 +30,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-
-# =============================================================
-# STYLING
-# =============================================================
-st.markdown("""
-<style>
-    /* ── Page header ── */
-    .main-header { text-align: center; padding: 10px 0 20px 0; }
-
-    /* ── RTL: All text inputs ── */
-    textarea {
-        direction: rtl !important;
-        text-align: right !important;
-        font-family: Arial, Helvetica, sans-serif !important;
-    }
-
-    /* ── Section header label ── */
-    .section-header {
-        direction: rtl;
-        text-align: right;
-        font-weight: 700;
-        font-size: 14px;
-        color: #4a4a8a;
-        margin: 14px 0 4px 0;
-        letter-spacing: 0.3px;
-    }
-
-    /* ── Main content box (per section) ── */
-    .rtl-output {
-        direction: rtl;
-        text-align: right;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 15px;
-        line-height: 1.95;
-        background: #fafbff;
-        padding: 16px 20px;
-        border-radius: 10px;
-        border-right: 4px solid #6c63ff;
-        color: #1a1a2e;
-        white-space: pre-wrap;
-        min-height: 50px;
-        margin-bottom: 2px;
-    }
-
-    /* ── Streaming / single-box (used during generation) ── */
-    .rtl-stream {
-        direction: rtl;
-        text-align: right;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 15px;
-        line-height: 1.95;
-        background: #fafbff;
-        padding: 20px 24px;
-        border-radius: 12px;
-        border-right: 4px solid #6c63ff;
-        color: #1a1a2e;
-        white-space: pre-wrap;
-        min-height: 120px;
-    }
-
-    /* ── User refinement bubble ── */
-    .user-bubble {
-        direction: rtl;
-        text-align: right;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: 14px;
-        background: #e8f5e9;
-        padding: 10px 16px;
-        border-radius: 10px;
-        border-right: 4px solid #4CAF50;
-        color: #1b5e20;
-        margin: 10px 0 6px 0;
-    }
-
-    /* ── Version label ── */
-    .version-label {
-        direction: rtl;
-        text-align: right;
-        font-size: 12px;
-        color: #999;
-        margin-bottom: 2px;
-        font-style: italic;
-    }
-    .version-label.current {
-        color: #6c63ff;
-        font-weight: 600;
-        font-style: normal;
-        font-size: 13px;
-    }
-
-    /* ── Image prompt box (English / LTR) ── */
-    .ltr-output {
-        direction: ltr;
-        text-align: left;
-        font-family: 'Courier New', monospace;
-        font-size: 13px;
-        line-height: 1.75;
-        background: #f0fff4;
-        padding: 16px 20px;
-        border-radius: 10px;
-        border-left: 4px solid #38a169;
-        color: #1a3a2a;
-        white-space: pre-wrap;
-        min-height: 50px;
-        margin-bottom: 2px;
-    }
-
-    /* ── Refinement input area ── */
-    .refine-box {
-        background: #f0f2ff;
-        border-radius: 10px;
-        padding: 12px 14px;
-        margin: 12px 0 8px 0;
-    }
-
-    @keyframes blink { 50% { opacity: 0; } }
-
-    /* ── RTL: Labels, captions, text ── */
-    label,
-    .stCaption p,
-    [data-testid="stMarkdownContainer"] p,
-    [data-testid="stText"] {
-        direction: rtl !important;
-        text-align: right !important;
-    }
-    [data-testid="stMainBlockContainer"] h1,
-    [data-testid="stMainBlockContainer"] h2,
-    [data-testid="stMainBlockContainer"] h3 {
-        direction: rtl; text-align: right;
-    }
-    [data-testid="stAlert"] { direction: rtl; text-align: right; }
-    [data-testid="stExpander"] summary { direction: rtl; text-align: right; }
-    footer { visibility: hidden; }
-</style>
-""", unsafe_allow_html=True)
-
 
 # =============================================================
 # SESSION STATE
@@ -184,8 +49,9 @@ def init_session():
         "saved_platform":     "",
         "saved_type":         "",
         "saved_brief":        "",
-        "input_counter":      0,   # incremented to clear refinement textarea
+        "input_counter":      0,
         "library_saved":      False,
+        "lang":               "he",   # "he" or "en"
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -193,21 +59,159 @@ def init_session():
 
 init_session()
 
+# ── Language + translation shortcuts ─────────────────────────
+lang = st.session_state.lang
+t    = get_t(lang)
+D    = t["dir"]    # "rtl" or "ltr"
+A    = t["align"]  # "right" or "left"
+
+# ── Dynamic SECTION_CONFIG for current language ───────────────
+SECTION_CONFIG = get_section_config(lang)
+
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
 # =============================================================
-# SECTION PARSING
+# STYLING — base styles + direction-aware overrides
 # =============================================================
-SECTION_CONFIG = [
-    ("caption",      "📝", "כיתוב ראשי"),
-    ("hashtags",     "#️⃣", "האשטגים"),
-    ("visual",       "🎬", "כיוון ויזואלי"),
-    ("story",        "📱", "גרסת סטורי"),
-    ("image_prompt", "🖼️", "פרומפט לתמונה (AI)"),
-]
+st.markdown("""
+<style>
+    /* ── Page header ── */
+    .main-header { text-align: center; padding: 10px 0 20px 0; }
+
+    /* ── Generated content boxes: ALWAYS RTL (Hebrew content) ── */
+    .rtl-output {
+        direction: rtl;
+        text-align: right;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 15px;
+        line-height: 1.95;
+        background: #fafbff;
+        padding: 16px 20px;
+        border-radius: 10px;
+        border-right: 4px solid #6c63ff;
+        color: #1a1a2e;
+        white-space: pre-wrap;
+        min-height: 50px;
+        margin-bottom: 2px;
+    }
+    .rtl-stream {
+        direction: rtl;
+        text-align: right;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 15px;
+        line-height: 1.95;
+        background: #fafbff;
+        padding: 20px 24px;
+        border-radius: 12px;
+        border-right: 4px solid #6c63ff;
+        color: #1a1a2e;
+        white-space: pre-wrap;
+        min-height: 120px;
+    }
+    .user-bubble {
+        direction: rtl;
+        text-align: right;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        background: #e8f5e9;
+        padding: 10px 16px;
+        border-radius: 10px;
+        border-right: 4px solid #4CAF50;
+        color: #1b5e20;
+        margin: 10px 0 6px 0;
+    }
+
+    /* ── Image prompt box (always LTR / English) ── */
+    .ltr-output {
+        direction: ltr;
+        text-align: left;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.75;
+        background: #f0fff4;
+        padding: 16px 20px;
+        border-radius: 10px;
+        border-left: 4px solid #38a169;
+        color: #1a3a2a;
+        white-space: pre-wrap;
+        min-height: 50px;
+        margin-bottom: 2px;
+    }
+
+    /* ── Version label ── */
+    .version-label {
+        font-size: 12px;
+        color: #999;
+        margin-bottom: 2px;
+        font-style: italic;
+    }
+    .version-label.current {
+        color: #6c63ff;
+        font-weight: 600;
+        font-style: normal;
+        font-size: 13px;
+    }
+
+    /* ── Refinement input area ── */
+    .refine-box {
+        background: #f0f2ff;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin: 12px 0 8px 0;
+    }
+
+    /* ── Lang toggle pill ── */
+    .lang-toggle {
+        display: flex;
+        gap: 6px;
+        justify-content: flex-end;
+        padding-top: 8px;
+    }
+
+    @keyframes blink { 50% { opacity: 0; } }
+    footer { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Direction-aware CSS (changes with language) ───────────────
+st.markdown(f"""
+<style>
+    textarea {{
+        direction: {D} !important;
+        text-align: {A} !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+    }}
+    .section-header {{
+        direction: {D};
+        text-align: {A};
+        font-weight: 700;
+        font-size: 14px;
+        color: #4a4a8a;
+        margin: 14px 0 4px 0;
+        letter-spacing: 0.3px;
+    }}
+    label,
+    .stCaption p,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stText"] {{
+        direction: {D} !important;
+        text-align: {A} !important;
+    }}
+    [data-testid="stMainBlockContainer"] h1,
+    [data-testid="stMainBlockContainer"] h2,
+    [data-testid="stMainBlockContainer"] h3 {{
+        direction: {D}; text-align: {A};
+    }}
+    [data-testid="stAlert"]    {{ direction: {D}; text-align: {A}; }}
+    [data-testid="stExpander"] summary {{ direction: {D}; text-align: {A}; }}
+</style>
+""", unsafe_allow_html=True)
 
 
+# =============================================================
+# SECTION PARSING — emoji markers (language-independent)
+# =============================================================
 def parse_content_sections(content: str) -> dict:
     """Split Claude output into named sections using emoji markers."""
     sections = {}
@@ -218,7 +222,6 @@ def parse_content_sections(content: str) -> dict:
         "story":        ["📱"],
         "image_prompt": ["🖼️"],
     }
-
     positions = []
     for key, emojis in marker_emojis.items():
         for emoji in emojis:
@@ -226,117 +229,97 @@ def parse_content_sections(content: str) -> dict:
             if idx != -1:
                 positions.append((idx, key))
                 break
-
     positions.sort(key=lambda x: x[0])
-
     for i, (idx, key) in enumerate(positions):
         line_end = content.find('\n', idx)
         if line_end == -1:
             sections[key] = content[idx:].strip()
             continue
         content_start = line_end + 1
-        content_end = positions[i + 1][0] if i + 1 < len(positions) else len(content)
-        text = content[content_start:content_end].strip().rstrip('-').strip()
-        sections[key] = text
-
+        content_end   = positions[i + 1][0] if i + 1 < len(positions) else len(content)
+        sections[key] = content[content_start:content_end].strip().rstrip('-').strip()
     return sections
 
 
 # =============================================================
-# COPY BUTTON (JS clipboard — works on localhost + HTTPS)
+# COPY BUTTON — language-aware labels
 # =============================================================
 def copy_button(text: str, uid: str):
-    """Render a copy-to-clipboard button inside an iframe component."""
-    safe_js = json.dumps(text)   # handles all escaping correctly
-    btn_id  = f"btn_{uid}"
+    """Render a copy-to-clipboard button, labels follow UI language."""
+    safe_js    = json.dumps(text)
+    btn_id     = f"btn_{uid}"
+    copy_lbl   = t["copy_btn"]
+    copied_lbl = t["copied_btn"]
 
     components.html(f"""
     <button id="{btn_id}"
         onclick="
-            var t = {safe_js};
+            var txt = {safe_js};
             var btn = document.getElementById('{btn_id}');
             if (navigator.clipboard && navigator.clipboard.writeText) {{
-                navigator.clipboard.writeText(t).then(function() {{
-                    btn.innerHTML = '✅ הועתק!';
+                navigator.clipboard.writeText(txt).then(function() {{
+                    btn.innerHTML = '{copied_lbl}';
                     btn.style.background = '#4CAF50';
                     setTimeout(function() {{
-                        btn.innerHTML = '📋 העתק';
+                        btn.innerHTML = '{copy_lbl}';
                         btn.style.background = '#6c63ff';
                     }}, 2000);
                 }});
             }} else {{
                 var el = document.createElement('textarea');
-                el.value = t;
-                el.style.position = 'fixed';
-                el.style.opacity = '0';
-                document.body.appendChild(el);
-                el.select();
-                document.execCommand('copy');
-                document.body.removeChild(el);
-                btn.innerHTML = '✅ הועתק!';
-                setTimeout(function() {{ btn.innerHTML = '📋 העתק'; }}, 2000);
+                el.value = txt; el.style.position='fixed'; el.style.opacity='0';
+                document.body.appendChild(el); el.select();
+                document.execCommand('copy'); document.body.removeChild(el);
+                btn.innerHTML = '{copied_lbl}';
+                setTimeout(function() {{ btn.innerHTML = '{copy_lbl}'; }}, 2000);
             }}
         "
-        style="
-            background: #6c63ff;
-            color: white;
-            border: none;
-            padding: 5px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            font-family: Arial;
-        "
-    >📋 העתק</button>
+        style="background:#6c63ff;color:white;border:none;padding:5px 14px;
+               border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;"
+    >{copy_lbl}</button>
     """, height=36, scrolling=False)
 
 
 # =============================================================
 # SECTION DISPLAY — parsed boxes with copy buttons
 # =============================================================
-def display_content_sections(content: str, uid_prefix: str = "sec"):
+def display_content_sections(content: str, uid_prefix: str = "sec",
+                              section_config: list = None):
     """Parse content and render each section as its own box + copy button."""
+    cfg      = section_config or SECTION_CONFIG
     sections = parse_content_sections(content)
 
     if not sections:
-        # Fallback: full content in one box
         safe = html_lib.escape(content)
         st.markdown(f'<div class="rtl-stream">{safe}</div>', unsafe_allow_html=True)
         return
 
-    for i, (key, emoji, hebrew_title) in enumerate(SECTION_CONFIG):
+    for i, (key, emoji, title) in enumerate(cfg):
         text = sections.get(key, "")
         if not text:
             continue
 
-        # Header row: title left, copy button right
         col_title, col_btn = st.columns([7, 2])
         with col_title:
             st.markdown(
-                f'<div class="section-header">{emoji} {hebrew_title}</div>',
+                f'<div class="section-header">{emoji} {title}</div>',
                 unsafe_allow_html=True,
             )
         with col_btn:
             copy_button(text, uid=f"{uid_prefix}_{i}")
 
-        # Content box — LTR for image prompts (English), RTL for everything else
         css_class = "ltr-output" if key == "image_prompt" else "rtl-output"
         safe = html_lib.escape(text)
         st.markdown(f'<div class="{css_class}">{safe}</div>', unsafe_allow_html=True)
 
-        if i < len(SECTION_CONFIG) - 1:
-            st.markdown(
-                '<div style="margin-bottom: 6px;"></div>',
-                unsafe_allow_html=True,
-            )
+        if i < len(cfg) - 1:
+            st.markdown('<div style="margin-bottom:6px;"></div>', unsafe_allow_html=True)
 
 
 # =============================================================
-# COMPACT HISTORY — shown in expander for previous versions
+# COMPACT HISTORY
 # =============================================================
 def display_compact_history(messages_list: list):
-    """Show previous chat exchanges (all except the latest AI response)."""
-    # Drop the last assistant message — that's displayed separately
     display_list = messages_list[:-1] if (
         messages_list and messages_list[-1]["role"] == "assistant"
     ) else messages_list
@@ -344,32 +327,27 @@ def display_compact_history(messages_list: list):
     for msg in display_list:
         if msg["role"] == "user":
             safe = html_lib.escape(msg["content"])
-            st.markdown(
-                f'<div class="user-bubble">💬 {safe}</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<div class="user-bubble">💬 {safe}</div>', unsafe_allow_html=True)
         else:
-            label = msg.get("label", "גרסה")
+            label = msg.get("label", "🤖")
             st.caption(f"🤖 {label}")
-            # Show only the caption portion to keep it compact
             sections = parse_content_sections(msg["content"])
-            preview = sections.get("caption", msg["content"])
-            preview = (preview[:300] + "...") if len(preview) > 300 else preview
+            preview  = sections.get("caption", msg["content"])
+            preview  = (preview[:300] + "...") if len(preview) > 300 else preview
             safe = html_lib.escape(preview)
             st.markdown(
-                f'<div class="rtl-output" style="font-size:13px; line-height:1.6; min-height:40px;">'
-                f'{safe}</div>',
-                unsafe_allow_html=True,
+                f'<div class="rtl-output" style="font-size:13px;line-height:1.6;min-height:40px;">'
+                f'{safe}</div>', unsafe_allow_html=True,
             )
 
 
 # =============================================================
-# STREAMING — renders into current column context
+# STREAMING
 # =============================================================
 def do_stream(messages: list, system_prompt: str, use_thinking: bool = False) -> str:
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        st.error("❌ שגיאה: לא נמצא מפתח API. בדוק שקובץ .env קיים.")
+        st.error(t["api_error"])
         return ""
 
     placeholder = st.empty()
@@ -393,52 +371,37 @@ def do_stream(messages: list, system_prompt: str, use_thinking: bool = False) ->
                     f'<div class="rtl-stream">{safe}▌</div>',
                     unsafe_allow_html=True,
                 )
-        # Remove cursor on completion
         safe = html_lib.escape(full_text)
         placeholder.markdown(
-            f'<div class="rtl-stream">{safe}</div>',
-            unsafe_allow_html=True,
+            f'<div class="rtl-stream">{safe}</div>', unsafe_allow_html=True,
         )
     except anthropic.AuthenticationError:
-        full_text = "❌ מפתח API לא תקין."
+        full_text = t["auth_error"]
         placeholder.error(full_text)
     except anthropic.RateLimitError:
-        full_text = "❌ הגעת למגבלת קריאות. נסה שוב בעוד כמה שניות."
+        full_text = t["rate_error"]
         placeholder.error(full_text)
     except Exception as e:
-        full_text = f"❌ שגיאה: {str(e)}"
+        full_text = f"❌ Error: {str(e)}"
         placeholder.error(full_text)
 
     return full_text
 
 
-# =============================================================
-# STREAMING — chat history renderer (used while pending)
-# =============================================================
 def display_full_history_for_streaming(messages_list: list):
-    """Show full thread (all messages) while a new response is streaming."""
     for msg in messages_list:
         if msg["role"] == "user":
             safe = html_lib.escape(msg["content"])
-            st.markdown(
-                f'<div class="user-bubble">💬 {safe}</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<div class="user-bubble">💬 {safe}</div>', unsafe_allow_html=True)
         else:
-            label = msg.get("label", "🤖 גרסה")
-            st.markdown(
-                f'<div class="version-label">{label}</div>',
-                unsafe_allow_html=True,
-            )
+            label = msg.get("label", "🤖")
+            st.markdown(f'<div class="version-label">{label}</div>', unsafe_allow_html=True)
             safe = html_lib.escape(msg["content"])
-            st.markdown(
-                f'<div class="rtl-stream">{safe}</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<div class="rtl-stream">{safe}</div>', unsafe_allow_html=True)
 
 
 # =============================================================
-# PROMPT BUILDERS (unchanged from v2.0)
+# PROMPT BUILDERS
 # =============================================================
 def build_system_prompt(brand_key: str, web_awareness: str = "") -> str:
     brand = BRAND_PROFILES[brand_key]
@@ -526,62 +489,42 @@ def build_system_prompt(brand_key: str, web_awareness: str = "") -> str:
 
 
 def _build_knowledge_base_section(brand: dict) -> str:
-    """Append accumulated brand knowledge to the system prompt if any exists."""
     kb = brand.get("knowledge_base", {})
     if not kb:
         return ""
-
     sections = []
-
     if kb.get("what_works"):
-        sections.append(
-            "מה עובד טוב (לפי ניסיון הצוות):\n" +
-            "\n".join(f"  ✅ {x}" for x in kb["what_works"])
-        )
+        sections.append("מה עובד טוב (לפי ניסיון הצוות):\n" +
+                        "\n".join(f"  ✅ {x}" for x in kb["what_works"]))
     if kb.get("what_doesnt"):
-        sections.append(
-            "מה לא עובד (לפי ניסיון הצוות):\n" +
-            "\n".join(f"  ❌ {x}" for x in kb["what_doesnt"])
-        )
+        sections.append("מה לא עובד (לפי ניסיון הצוות):\n" +
+                        "\n".join(f"  ❌ {x}" for x in kb["what_doesnt"]))
     if kb.get("competitors"):
-        sections.append(
-            "מתחרים — שים לב להתבדל מהם:\n" +
-            "\n".join(f"  🏆 {x}" for x in kb["competitors"])
-        )
+        sections.append("מתחרים — שים לב להתבדל מהם:\n" +
+                        "\n".join(f"  🏆 {x}" for x in kb["competitors"]))
     if kb.get("team_notes"):
-        sections.append(
-            "הערות מצוות השיווק:\n" +
-            "\n".join(f"  📝 {x}" for x in kb["team_notes"])
-        )
+        sections.append("הערות מצוות השיווק:\n" +
+                        "\n".join(f"  📝 {x}" for x in kb["team_notes"]))
     if kb.get("approved_hashtags"):
-        sections.append(
-            "האשטגים מאושרים לשימוש:\n" +
-            "  " + "  ".join(f"#{x}" for x in kb["approved_hashtags"])
-        )
-
+        sections.append("האשטגים מאושרים לשימוש:\n" +
+                        "  " + "  ".join(f"#{x}" for x in kb["approved_hashtags"]))
     if not sections:
         return ""
-
-    return (
-        "\n\n═══════════════════════════════════════\n"
-        " ידע נצבר מניסיון הצוות\n"
-        "═══════════════════════════════════════\n\n" +
-        "\n\n".join(sections)
-    )
+    return ("\n\n═══════════════════════════════════════\n"
+            " ידע נצבר מניסיון הצוות\n"
+            "═══════════════════════════════════════\n\n" +
+            "\n\n".join(sections))
 
 
 def _build_web_awareness_section(awareness: str) -> str:
-    """Inject live web scan results into the system prompt if available."""
     if not awareness or not awareness.strip():
         return ""
-    return (
-        "\n\n═══════════════════════════════════════\n"
-        " 🌐 מה קורה עכשיו — נסרק ממקורות המותג\n"
-        "═══════════════════════════════════════\n\n"
-        "המידע הבא נסרק זה עתה מהמקורות המאושרים של המותג.\n"
-        "השתמש בו כדי להפוך את התוכן לרלוונטי ועדכני:\n\n"
-        + awareness
-    )
+    return ("\n\n═══════════════════════════════════════\n"
+            " 🌐 מה קורה עכשיו — נסרק ממקורות המותג\n"
+            "═══════════════════════════════════════\n\n"
+            "המידע הבא נסרק זה עתה מהמקורות המאושרים של המותג.\n"
+            "השתמש בו כדי להפוך את התוכן לרלוונטי ועדכני:\n\n"
+            + awareness)
 
 
 def build_initial_user_prompt(
@@ -655,25 +598,43 @@ platform_display = {
     "facebook":  "👥 Facebook",
 }
 
-# Reload brands fresh on every render so Brand Manager edits show immediately
+# Reload brands fresh on every render
 BRAND_PROFILES = load_brands() or _FALLBACK_PROFILES
 
 # =============================================================
-# PAGE HEADER
+# PAGE HEADER + LANGUAGE TOGGLE
 # =============================================================
-st.markdown(
-    """
-    <div class="main-header">
-        <h1>🚀 Marketing Hub</h1>
-        <p style="color: #666; font-size: 18px;">
-            יוצר תוכן חכם לסושיאל מדיה — Myst | Prime51
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-st.divider()
+col_hdr, col_lang = st.columns([11, 1])
 
+with col_hdr:
+    st.markdown(
+        f"""
+        <div class="main-header">
+            <h1>🚀 Marketing Hub</h1>
+            <p style="color:#666; font-size:18px;">
+                {t['subtitle']} — Myst | Prime51
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with col_lang:
+    st.markdown("<div style='padding-top:18px;'>", unsafe_allow_html=True)
+    lang_choice = st.radio(
+        "lang",
+        options=["עב", "EN"],
+        index=0 if lang == "he" else 1,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    new_lang = "he" if lang_choice == "עב" else "en"
+    if new_lang != lang:
+        st.session_state.lang = new_lang
+        st.rerun()
+
+st.divider()
 col_output, col_controls = st.columns([10, 9], gap="large")
 
 
@@ -683,35 +644,29 @@ col_output, col_controls = st.columns([10, 9], gap="large")
 with col_controls:
 
     if st.session_state.has_content:
-        st.info(f"📝 מצב עריכה: **{st.session_state.saved_brand}**")
-        if st.button("🆕 התחל תוכן חדש", use_container_width=True):
-            st.session_state.api_messages       = []
-            st.session_state.chat_display       = []
-            st.session_state.system_prompt      = ""
-            st.session_state.has_content        = False
-            st.session_state.latest_content     = ""
-            st.session_state.approved           = False
-            st.session_state.pending_refinement = None
-            st.session_state.saved_brand        = ""
-            st.session_state.saved_brand_key    = ""
-            st.session_state.saved_brand_emoji  = ""
-            st.session_state.saved_platform     = ""
-            st.session_state.saved_type         = ""
-            st.session_state.saved_brief        = ""
-            st.session_state.input_counter      = 0
-            st.session_state.library_saved      = False
+        st.info(f"{t['edit_mode_label']} **{st.session_state.saved_brand}**")
+        if st.button(t["new_content_btn"], use_container_width=True):
+            for k in ["api_messages","chat_display","system_prompt","has_content",
+                      "latest_content","approved","pending_refinement","saved_brand",
+                      "saved_brand_key","saved_brand_emoji","saved_platform",
+                      "saved_type","saved_brief","library_saved"]:
+                st.session_state[k] = [] if k in ("api_messages","chat_display") \
+                    else "" if isinstance(st.session_state[k], str) \
+                    else False if isinstance(st.session_state[k], bool) \
+                    else None
+            st.session_state.input_counter = 0
             st.rerun()
         st.divider()
 
     st.markdown(
-        '<div style="background:#f4f4fb; border-radius:12px; padding:18px 20px 10px 20px; margin-bottom:12px;">',
+        '<div style="background:#f4f4fb;border-radius:12px;padding:18px 20px 10px 20px;margin-bottom:12px;">',
         unsafe_allow_html=True,
     )
-    st.markdown("#### ⚙️ הגדרות")
+    st.markdown(f"#### {t['settings_header']}")
 
-    brand_display_map = {k: f"{v['emoji']} {v['name']}" for k, v in BRAND_PROFILES.items()}
+    brand_display_map  = {k: f"{v['emoji']} {v['name']}" for k, v in BRAND_PROFILES.items()}
     selected_brand_key = st.selectbox(
-        "🏷️ מותג",
+        t["brand_label"],
         options=list(brand_display_map.keys()),
         format_func=lambda x: brand_display_map[x],
         disabled=st.session_state.has_content,
@@ -722,113 +677,98 @@ with col_controls:
         p for p, d in selected_brand["platforms"].items() if d["priority"] == "primary"
     )
     selected_platform = st.selectbox(
-        "📡 פלטפורמה",
+        t["platform_label"],
         options=list(platform_display.keys()),
         format_func=lambda x: platform_display[x],
         index=list(platform_display.keys()).index(primary_platform),
         disabled=st.session_state.has_content,
     )
     plat_priority = selected_brand["platforms"].get(selected_platform, {}).get("priority", "")
-    st.caption("⭐ פלטפורמה ראשית" if plat_priority == "primary" else "📌 פלטפורמה משנית")
+    st.caption(t["primary_platform_cap"] if plat_priority == "primary" else t["secondary_platform_cap"])
 
-    content_display_map = {k: f"{v['emoji']} {v['label']}" for k, v in CONTENT_TYPES.items()}
+    content_display_map   = {k: f"{v['emoji']} {v['label']}" for k, v in CONTENT_TYPES.items()}
     selected_content_type = st.selectbox(
-        "📄 סוג תוכן",
+        t["content_type_label"],
         options=list(content_display_map.keys()),
         format_func=lambda x: content_display_map[x],
         disabled=st.session_state.has_content,
     )
     st.caption(CONTENT_TYPES[selected_content_type]["description"])
 
-    with st.expander("🔧 אפשרויות מתקדמות"):
+    with st.expander(t["advanced_options"]):
         num_versions = st.slider(
-            "מספר גרסאות", min_value=1, max_value=3, value=1,
+            t["num_versions_label"], min_value=1, max_value=3, value=1,
             disabled=st.session_state.has_content,
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("#### 📝 הבריף שלך")
+    st.markdown(f"#### {t['brief_header']}")
 
     brief = st.text_area(
-        "מה אתה רוצה לפרסם?",
-        placeholder=(
-            "לדוגמה:\n"
-            "הגיעו לנו פאנקו חדשים של ספיידרמן אקרוס דה ספיידר ורס. "
-            "יש 5 דמויות — מיילס מוראלס, גוון, ספיידר-פאנק, ספיידר-וומן. "
-            "מחיר 89 ש\"ח ליחידה."
-        ),
+        t["brief_what"],
+        placeholder=t["brief_placeholder"],
         height=150,
         label_visibility="collapsed",
         disabled=st.session_state.has_content,
     )
 
     additional_notes = st.text_area(
-        "הערות נוספות (אופציונלי)",
-        placeholder="לדוגמה: יש מלאי מוגבל, יש מבצע השבוע...",
+        t["extra_notes_label"],
+        placeholder=t["extra_notes_placeholder"],
         height=70,
         disabled=st.session_state.has_content,
     )
 
-    with st.expander("💡 טיפים לבריף טוב"):
-        st.markdown("""
-| סוג | מה לכלול |
-|---|---|
-| **מוצר חדש** | שם + מה מיוחד + מחיר |
-| **אירוע** | תאריך + שעה + למי |
-| **מבצע** | מה + כמה % + עד מתי |
-| **אנבוקסינג** | תאר מה נפתח |
-| **טרנד** | לאיזה סרט/סדרה קשור |
-        """)
+    with st.expander(t["tips_brief_header"]):
+        st.markdown(t["tips_brief_table"])
 
     st.divider()
 
     can_generate = bool(brief.strip()) and not st.session_state.has_content
     btn_label = (
-        f"✨ צור {num_versions} גרסאות"
+        t["generate_btn_multi"].format(n=num_versions)
         if num_versions > 1
-        else f"✨ צור {CONTENT_TYPES[selected_content_type]['emoji']} {CONTENT_TYPES[selected_content_type]['label']}"
+        else t["generate_btn_single"].format(
+            emoji=CONTENT_TYPES[selected_content_type]["emoji"],
+            label=CONTENT_TYPES[selected_content_type]["label"],
+        )
     )
     generate = st.button(
         btn_label, type="primary", disabled=not can_generate, use_container_width=True,
     )
     if not brief.strip() and not st.session_state.has_content:
-        st.warning("⬆️ מלא את הבריף כדי להפעיל")
+        st.warning(t["fill_brief_warning"])
 
-    st.caption("Powered by Claude AI · 💬 Chat Mode v2.1")
+    st.caption(t["powered_by"])
 
     if st.session_state.has_content:
         st.markdown("---")
-        st.markdown("#### 💡 טיפים לשיפור")
-        with st.expander("מה אפשר לבקש?"):
-            st.markdown("""
-- 🎭 **טון**: `יותר מצחיק` / `יותר רציני` / `יותר אנרגטי`
-- ✂️ **אורך**: `קצר יותר` / `הרחב את הכיתוב`
-- ⚡ **FOMO**: `הוסף תחושת דחיפות ומלאי מוגבל`
-- 🔁 **מבנה**: `שנה את הפתיחה` / `הוסף CTA חזק יותר`
-- #️⃣ **האשטגים**: `שנה את האשטגים`
-- 🎨 **ויזואל**: `כיוון ויזואלי שונה / יותר דרמטי`
-- 📱 **סטורי**: `סטורי קצר ומצחיק יותר`
-            """)
+        st.markdown(f"#### {t['tips_refine_header']}")
+        with st.expander(t["tips_refine_expander"]):
+            st.markdown(t["tips_refine_content"])
 
 
 # ──────────────────────────────────────────────────────────────
 # LEFT COLUMN — Output
 # ──────────────────────────────────────────────────────────────
 with col_output:
-    st.markdown("#### 🎨 שיחת תוכן")
+    st.markdown(f"#### {t['content_chat_header']}")
 
     # ══ CASE 1: Generate initial content ══════════════════════
     if generate and can_generate:
 
-        # ── Phase 2: scan web sources if configured ───────
-        web_awareness   = ""
-        active_sources  = [
+        # Phase 2: scan web sources if configured
+        web_awareness  = ""
+        active_sources = [
             s for s in selected_brand.get("web_sources", [])
             if s.get("active", True) and str(s.get("url", "")).strip()
         ]
         if active_sources:
-            with st.spinner(f"🌐 סורק {len(active_sources)} מקור{'ות' if len(active_sources) > 1 else ''} מידע..."):
+            n      = len(active_sources)
+            suffix = "ות" if (lang == "he" and n > 1) else ("s" if n > 1 else "")
+            spinner_msg = t["scanning_sources"].format(n=n, suffix=suffix)
+            with st.spinner(spinner_msg):
                 web_awareness = get_brand_awareness(selected_brand)
 
         system_prompt = build_system_prompt(selected_brand_key, web_awareness=web_awareness)
@@ -837,12 +777,9 @@ with col_output:
             brief, additional_notes, num_versions,
         )
 
-        scan_note = f" · 🌐 {len(active_sources)} מקורות נסרקו" if active_sources else ""
-        st.caption(
-            f"יוצר **{CONTENT_TYPES[selected_content_type]['label']}** "
-            f"עבור **{selected_brand['name']}** "
-            f"על **{platform_display[selected_platform]}** ...{scan_note}"
-        )
+        scan_note = (t["scan_note"].format(n=len(active_sources)) if active_sources else "")
+        label_str  = CONTENT_TYPES[selected_content_type]["label"]
+        st.caption(f"**{label_str}** · **{selected_brand['name']}** · **{platform_display[selected_platform]}**{scan_note}")
 
         st.session_state.system_prompt     = system_prompt
         st.session_state.api_messages      = [{"role": "user", "content": user_prompt}]
@@ -850,39 +787,32 @@ with col_output:
         st.session_state.saved_brand_key   = selected_brand_key
         st.session_state.saved_brand_emoji = selected_brand.get("emoji", "🏢")
         st.session_state.saved_platform    = platform_display[selected_platform]
-        st.session_state.saved_type        = CONTENT_TYPES[selected_content_type]["label"]
+        st.session_state.saved_type        = label_str
         st.session_state.saved_brief       = brief.strip()
         st.session_state.library_saved     = False
 
-        response_text = do_stream(
-            st.session_state.api_messages, system_prompt, use_thinking=True,
-        )
+        response_text = do_stream(st.session_state.api_messages, system_prompt, use_thinking=True)
 
         if response_text and not response_text.startswith("❌"):
-            st.session_state.api_messages.append(
-                {"role": "assistant", "content": response_text}
-            )
+            st.session_state.api_messages.append({"role": "assistant", "content": response_text})
             st.session_state.chat_display = [{
                 "role":    "assistant",
                 "content": response_text,
-                "label":   f"✨ גרסה ראשונה — {CONTENT_TYPES[selected_content_type]['label']}",
+                "label":   t["first_version_label"].format(label=label_str),
             }]
             st.session_state.latest_content = response_text
             st.session_state.has_content    = True
             st.rerun()
 
-    # ══ CASE 2: Refinement pending — stream in column ══════════
+    # ══ CASE 2: Refinement pending ════════════════════════════
     elif st.session_state.has_content and st.session_state.pending_refinement:
         refinement_text                     = st.session_state.pending_refinement
         st.session_state.pending_refinement = None
 
-        # Show full thread so far (user bubble is already in chat_display)
         display_full_history_for_streaming(st.session_state.chat_display)
 
-        version_num = sum(
-            1 for m in st.session_state.chat_display if m["role"] == "assistant"
-        ) + 1
-        st.caption(f"מעדכן לגרסה {version_num}...")
+        version_num = sum(1 for m in st.session_state.chat_display if m["role"] == "assistant") + 1
+        st.caption(t["updating_version"].format(n=version_num))
 
         response_text = do_stream(
             st.session_state.api_messages,
@@ -891,13 +821,11 @@ with col_output:
         )
 
         if response_text and not response_text.startswith("❌"):
-            st.session_state.api_messages.append(
-                {"role": "assistant", "content": response_text}
-            )
+            st.session_state.api_messages.append({"role": "assistant", "content": response_text})
             st.session_state.chat_display.append({
                 "role":    "assistant",
                 "content": response_text,
-                "label":   f"✏️ גרסה {version_num}",
+                "label":   t["version_label"].format(n=version_num),
             })
             st.session_state.latest_content = response_text
             st.session_state.approved       = False
@@ -906,125 +834,103 @@ with col_output:
     # ══ CASE 3: Normal display ════════════════════════════════
     elif st.session_state.has_content:
 
-        # ── Chat history (collapsed if more than 1 round) ─────
-        improvement_count = sum(
-            1 for m in st.session_state.chat_display if m["role"] == "user"
-        )
+        improvement_count = sum(1 for m in st.session_state.chat_display if m["role"] == "user")
         if len(st.session_state.chat_display) > 1:
+            impr_word = (
+                t["improvement_plural"] if improvement_count != 1 else t["improvement_singular"]
+            )
             with st.expander(
-                f"📜 היסטוריית שיחה — {improvement_count} שיפור{'ים' if improvement_count != 1 else ''}",
+                t["history_expander"].format(n=improvement_count, word=impr_word),
                 expanded=False,
             ):
                 display_compact_history(st.session_state.chat_display)
 
-        # ── Latest version label ──────────────────────────────
         latest_msg   = next(
-            (m for m in reversed(st.session_state.chat_display) if m["role"] == "assistant"),
-            None,
+            (m for m in reversed(st.session_state.chat_display) if m["role"] == "assistant"), None,
         )
-        latest_label = latest_msg.get("label", "גרסה נוכחית") if latest_msg else "גרסה נוכחית"
+        latest_label = latest_msg.get("label", "") if latest_msg else ""
         st.markdown(
             f'<div class="version-label current">📄 {latest_label}</div>',
             unsafe_allow_html=True,
         )
 
-        # ── Parsed section boxes with copy buttons ────────────
         display_content_sections(
             st.session_state.latest_content,
             uid_prefix=f"v{improvement_count}",
+            section_config=SECTION_CONFIG,
         )
 
-        # ── Refinement input (inline, above confirm) ──────────
+        # ── Refinement input ──────────────────────────────────
         if not st.session_state.approved:
+            st.markdown('<div class="refine-box">', unsafe_allow_html=True)
             st.markdown(
-                '<div class="refine-box">',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div style="direction:rtl; text-align:right; font-size:13px; '
-                'font-weight:600; color:#4a4a8a; margin-bottom:6px;">💬 רוצה לשנות משהו?</div>',
+                f'<div style="direction:{D};text-align:{A};font-size:13px;'
+                f'font-weight:600;color:#4a4a8a;margin-bottom:6px;">'
+                f'{t["refine_prompt"]}</div>',
                 unsafe_allow_html=True,
             )
 
             refine_key  = f"refine_ta_{st.session_state.input_counter}"
             refine_text = st.text_area(
-                "שיפור",
-                placeholder=(
-                    "לדוגמה: 'יותר מצחיק' / 'קצר יותר' / "
-                    "'הוסף FOMO' / 'שנה את הפתיחה' / 'שנה את האשטגים'..."
-                ),
+                "refine",
+                placeholder=t["refine_placeholder"],
                 height=85,
                 label_visibility="collapsed",
                 key=refine_key,
             )
-
-            col_send, col_spacer = st.columns([3, 1])
+            col_send, _ = st.columns([3, 1])
             with col_send:
-                send_btn = st.button(
-                    "שלח שיפור ↩️", type="primary", use_container_width=True,
-                )
+                send_btn = st.button(t["send_refine_btn"], type="primary", use_container_width=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
             if send_btn and refine_text.strip():
-                st.session_state.api_messages.append(
-                    {"role": "user", "content": refine_text.strip()}
-                )
-                st.session_state.chat_display.append(
-                    {"role": "user", "content": refine_text.strip()}
-                )
+                st.session_state.api_messages.append({"role": "user", "content": refine_text.strip()})
+                st.session_state.chat_display.append({"role": "user", "content": refine_text.strip()})
                 st.session_state.pending_refinement = refine_text.strip()
-                st.session_state.input_counter     += 1   # clears textarea on rerun
+                st.session_state.input_counter += 1
                 st.rerun()
 
-        # ── Approve / Save buttons ────────────────────────────
+        # ── Approve / Save ────────────────────────────────────
         st.markdown("---")
 
         if st.session_state.approved:
-            st.success("✅ תוכן אושר! מוכן לפרסום.")
+            st.success(t["approved_success"])
 
-            # ── Save to library ───────────────────────────
             if st.session_state.library_saved:
-                st.info("📚 נשמר בספריית התוכן!")
+                st.info(t["library_saved_info"])
             else:
-                if st.button(
-                    "📚 שמור לספריית התוכן", type="primary",
-                    use_container_width=True,
-                ):
+                if st.button(t["save_library_btn"], type="primary", use_container_width=True):
                     add_to_library({
-                        "brand_key":     st.session_state.saved_brand_key,
-                        "brand_name":    st.session_state.saved_brand,
-                        "brand_emoji":   st.session_state.saved_brand_emoji,
-                        "platform":      st.session_state.saved_platform,
-                        "content_type":  st.session_state.saved_type,
-                        "brief":         st.session_state.saved_brief,
-                        "content":       st.session_state.latest_content,
-                        "notes":         "",
+                        "brand_key":    st.session_state.saved_brand_key,
+                        "brand_name":   st.session_state.saved_brand,
+                        "brand_emoji":  st.session_state.saved_brand_emoji,
+                        "platform":     st.session_state.saved_platform,
+                        "content_type": st.session_state.saved_type,
+                        "brief":        st.session_state.saved_brief,
+                        "content":      st.session_state.latest_content,
+                        "notes":        "",
                     })
                     st.session_state.library_saved = True
                     st.rerun()
 
             st.download_button(
-                "⬇️ הורד תוכן מאושר",
+                t["download_approved_btn"],
                 data=st.session_state.latest_content,
-                file_name=(
-                    f"{st.session_state.saved_brand.replace(' ', '_')}_approved.txt"
-                ),
+                file_name=f"{st.session_state.saved_brand.replace(' ', '_')}_approved.txt",
                 mime="text/plain",
                 use_container_width=True,
             )
         else:
             col_approve, col_save = st.columns(2)
             with col_approve:
-                if st.button("✅ אשר תוכן זה", type="primary", use_container_width=True):
+                if st.button(t["approve_btn"], type="primary", use_container_width=True):
                     st.session_state.approved = True
                     st.rerun()
             with col_save:
                 st.download_button(
-                    "💾 שמור טיוטה",
+                    t["save_draft_btn"],
                     data=st.session_state.latest_content,
-                    file_name=(
-                        f"{st.session_state.saved_brand.replace(' ', '_')}_draft.txt"
-                    ),
+                    file_name=f"{st.session_state.saved_brand.replace(' ', '_')}_draft.txt",
                     mime="text/plain",
                     use_container_width=True,
                 )
@@ -1032,26 +938,17 @@ with col_output:
     # ══ CASE 4: Empty state ════════════════════════════════════
     else:
         st.markdown(
-            """
+            f"""
             <div style="
-                background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
-                border-radius: 12px;
-                padding: 60px 30px;
-                text-align: center;
-                color: #aaa;
-                border: 2px dashed #d0d5ff;
-                margin-top: 8px;
-                min-height: 400px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-            ">
-                <div style="font-size: 60px; margin-bottom: 16px;">💬</div>
-                <div style="font-size: 20px; color: #888; font-weight: 600;">מצב שיחה</div>
-                <div style="font-size: 14px; color: #bbb; margin-top: 10px; direction: rtl;">
-                    צור תוכן ואז שוחח עם הסוכן<br>
-                    לשיפורים עד שהתוצאה מושלמת ✅
+                background:linear-gradient(135deg,#f8f9ff 0%,#f0f2ff 100%);
+                border-radius:12px; padding:60px 30px; text-align:center;
+                color:#aaa; border:2px dashed #d0d5ff; margin-top:8px;
+                min-height:400px; display:flex; flex-direction:column;
+                align-items:center; justify-content:center;">
+                <div style="font-size:60px;margin-bottom:16px;">💬</div>
+                <div style="font-size:20px;color:#888;font-weight:600;">{t['empty_chat_title']}</div>
+                <div style="font-size:14px;color:#bbb;margin-top:10px;">
+                    {t['empty_chat_sub']}
                 </div>
             </div>
             """,
@@ -1063,21 +960,13 @@ with col_output:
 # FOOTER — Status bar
 # =============================================================
 st.divider()
-improvement_count_footer = sum(
-    1 for m in st.session_state.chat_display if m["role"] == "user"
-)
+improvement_count_footer = sum(1 for m in st.session_state.chat_display if m["role"] == "user")
 col_f1, col_f2, col_f3, col_f4 = st.columns(4)
-col_f1.metric(
-    "מותג",
-    st.session_state.saved_brand or selected_brand["name"],
-)
-col_f2.metric(
-    "פלטפורמה",
-    (st.session_state.saved_platform or platform_display[selected_platform]).split(" ")[-1],
-)
-col_f3.metric("שיפורים", improvement_count_footer)
+col_f1.metric(t["brand_metric"],       st.session_state.saved_brand or selected_brand["name"])
+col_f2.metric(t["platform_metric"],    (st.session_state.saved_platform or platform_display[selected_platform]).split(" ")[-1])
+col_f3.metric(t["improvements_metric"], improvement_count_footer)
 col_f4.metric(
-    "סטטוס",
-    "✅ מאושר"   if st.session_state.approved
-    else ("📝 בעבודה" if st.session_state.has_content else "⏳ ממתין"),
+    t["status_metric"],
+    t["status_approved"] if st.session_state.approved
+    else (t["status_working"] if st.session_state.has_content else t["status_waiting"]),
 )
