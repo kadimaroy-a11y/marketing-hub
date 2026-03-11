@@ -376,17 +376,25 @@ def display_content_sections(content: str, uid_prefix: str = "sec",
             en_text = parts[0].strip()
             he_text = parts[1].strip() if len(parts) > 1 else ""
 
-            col_en, col_he = st.columns(2)
-            with col_en:
-                st.markdown('<div class="lang-badge">🇬🇧 English — AI Generator</div>', unsafe_allow_html=True)
-                safe_en = html_lib.escape(en_text)
-                st.markdown(f'<div class="ltr-output">{safe_en}</div>', unsafe_allow_html=True)
-                copy_button(en_text, uid=f"{uid_prefix}_{i}_en")
-            with col_he:
+            # Hebrew window (top)
+            col_he_lbl, col_he_btn = st.columns([7, 2])
+            with col_he_lbl:
                 st.markdown('<div class="lang-badge">🇮🇱 עברית — לצוות היצירתי</div>', unsafe_allow_html=True)
-                safe_he = html_lib.escape(he_text)
-                st.markdown(f'<div class="he-image-prompt">{safe_he}</div>', unsafe_allow_html=True)
+            with col_he_btn:
                 copy_button(he_text, uid=f"{uid_prefix}_{i}_he")
+            safe_he = html_lib.escape(he_text)
+            st.markdown(f'<div class="he-image-prompt">{safe_he}</div>', unsafe_allow_html=True)
+
+            st.markdown('<div style="margin-bottom:6px;"></div>', unsafe_allow_html=True)
+
+            # English window (bottom)
+            col_en_lbl, col_en_btn = st.columns([7, 2])
+            with col_en_lbl:
+                st.markdown('<div class="lang-badge">🇬🇧 English — AI Generator</div>', unsafe_allow_html=True)
+            with col_en_btn:
+                copy_button(en_text, uid=f"{uid_prefix}_{i}_en")
+            safe_en = html_lib.escape(en_text)
+            st.markdown(f'<div class="ltr-output">{safe_en}</div>', unsafe_allow_html=True)
         else:
             col_chk, col_title, col_btn = st.columns([1, 6, 2])
             with col_chk:
