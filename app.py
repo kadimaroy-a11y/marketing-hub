@@ -15,7 +15,7 @@ import html as html_lib
 from dotenv import load_dotenv
 from db import load_brands
 from brand_profiles import CONTENT_TYPES, BRAND_PROFILES as _FALLBACK_PROFILES
-from web_reader import get_brand_awareness
+from web_reader import get_brand_awareness, get_product_links
 from content_db import add_to_library
 from translations import get_t, get_section_config
 
@@ -403,7 +403,23 @@ def display_full_history_for_streaming(messages_list: list):
 # =============================================================
 # PROMPT BUILDERS
 # =============================================================
-def build_system_prompt(brand_key: str, web_awareness: str = "") -> str:
+def _build_product_links_section(product_links: str) -> str:
+    if not product_links or not product_links.strip():
+        return ""
+    return (
+        "\n\n═══════════════════════════════════════\n"
+        " 🔗 מוצרים וקישורים אמיתיים מאתר המותג\n"
+        "═══════════════════════════════════════\n\n"
+        "⚠️ חוק ברזל — קישורים:\n"
+        "הרשימה הבאה נסרקה ישירות מאתר המותג ומכילה שמות מוצרים וכתובות URL אמיתיות.\n"
+        "כאשר מבקשים לכלול קישורים בתוכן — השתמש אך ורק בכתובות URL המופיעות כאן.\n"
+        "אסור בהחלט להמציא, לשנות, או לנחש כתובות URL — גם אם נראות הגיוניות.\n"
+        "אם מוצר מוזכר אך אין לו קישור ברשימה — אל תכלול קישור כלל.\n\n"
+        + product_links
+    )
+
+
+def build_system_prompt(brand_key: str, web_awareness: str = "", product_links: str = "") -> str:
     brand = BRAND_PROFILES[brand_key]
 
     products_str = "\n".join([f"  • {p}" for p in brand["products"]])
@@ -485,7 +501,7 @@ def build_system_prompt(brand_key: str, web_awareness: str = "") -> str:
 - שמור על אותו פורמט (📝 כיתוב ראשי / #️⃣ האשטגים / 🎬 כיוון ויזואלי / 📱 גרסת סטורי / 🖼️ פרומפט לתמונה)
 - אלא אם התבקשת במפורש לשנות את הפורמט
 - החזר את הפוסט המעודכן במלואו, מוכן לפרסום
-{_build_knowledge_base_section(brand)}{_build_web_awareness_section(web_awareness)}"""
+{_build_knowledge_base_section(brand)}{_build_product_links_section(product_links)}{_build_web_awareness_section(web_awareness)}"""
 
 
 def _build_knowledge_base_section(brand: dict) -> str:
@@ -758,7 +774,14 @@ with col_output:
     # ══ CASE 1: Generate initial content ══════════════════════
     if generate and can_generate:
 
-        # Phase 2: scan web sources if configured
+        # ── Scan real product links from brand website ─────────
+        product_links = ""
+        brand_website = selected_brand.get("website", "").strip()
+        if brand_website:
+            with st.spinner("🔗 סורק מוצרים מאתר המותג..."):
+                product_links = get_product_links(selected_brand)
+
+        # ── Phase 2: scan curated web sources ──────────────────
         web_awareness  = ""
         active_sources = [
             s for s in selected_brand.get("web_sources", [])
@@ -771,7 +794,11 @@ with col_output:
             with st.spinner(spinner_msg):
                 web_awareness = get_brand_awareness(selected_brand)
 
-        system_prompt = build_system_prompt(selected_brand_key, web_awareness=web_awareness)
+        system_prompt = build_system_prompt(
+            selected_brand_key,
+            web_awareness=web_awareness,
+            product_links=product_links,
+        )
         user_prompt   = build_initial_user_prompt(
             selected_brand_key, selected_platform, selected_content_type,
             brief, additional_notes, num_versions,
