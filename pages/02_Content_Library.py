@@ -200,37 +200,59 @@ def parse_sections(content: str) -> dict:
 
 
 def copy_btn(text: str, uid: str, copy_label: str = "📋 העתק", copied_label: str = "✅ הועתק!"):
-    safe = json.dumps(text)
-    cl   = json.dumps(copy_label)
-    cpl  = json.dumps(copied_label)
-    bid  = f"cbtn_{uid}"
+    safe_uid = "".join(c if c.isalnum() else "_" for c in uid)
+    bid      = f"cb_{safe_uid}"
+    safe     = json.dumps(text,         ensure_ascii=True).replace("</", "<\\/")
+    cl       = json.dumps(copy_label,   ensure_ascii=True)
+    cpl      = json.dumps(copied_label, ensure_ascii=True)
     components.html(f"""
     <button id="{bid}"
-        onclick="(function(){{
-            var t={safe};
-            var cl={cl};
-            var cpl={cpl};
-            var b=document.getElementById('{bid}');
-            function onCopied(){{
-                b.innerHTML=cpl;b.style.background='#4CAF50';
-                setTimeout(function(){{b.innerHTML=cl;b.style.background='#6c63ff';}},2000);
-            }}
-            function fallback(){{
-                var e=document.createElement('textarea');
-                e.value=t;e.style.cssText='position:fixed;opacity:0;top:0;left:0;';
-                document.body.appendChild(e);e.select();
-                try{{document.execCommand('copy');}}catch(ex){{}}
-                document.body.removeChild(e);onCopied();
-            }}
-            var clip=(window.parent||window).navigator.clipboard;
-            if(clip&&clip.writeText){{clip.writeText(t).then(onCopied).catch(fallback);}}
-            else{{fallback();}}
-        }})()
-        "
         style="background:#6c63ff;color:white;border:none;padding:4px 12px;
-               border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial;"
-    >{copy_label}</button>
-    """, height=32, scrolling=False)
+               border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial;
+               white-space:nowrap;">
+        {copy_label}
+    </button>
+    <script>
+    (function() {{
+        var text      = {safe};
+        var copyLbl   = {cl};
+        var copiedLbl = {cpl};
+        var btn = document.getElementById('{bid}');
+        if (!btn) return;
+
+        function onCopied() {{
+            btn.textContent = copiedLbl;
+            btn.style.background = '#4CAF50';
+            setTimeout(function() {{
+                btn.textContent = copyLbl;
+                btn.style.background = '#6c63ff';
+            }}, 2000);
+        }}
+
+        function legacyCopy() {{
+            var inp = document.createElement('input');
+            inp.setAttribute('readonly', '');
+            inp.value = text;
+            inp.style.cssText = 'position:absolute;left:-9999px;top:0;opacity:0;';
+            document.body.appendChild(inp);
+            inp.focus();
+            inp.select();
+            inp.setSelectionRange(0, inp.value.length);
+            try {{ document.execCommand('copy'); }} catch(e) {{}}
+            document.body.removeChild(inp);
+            onCopied();
+        }}
+
+        btn.addEventListener('click', function() {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText(text).then(onCopied).catch(legacyCopy);
+            }} else {{
+                legacyCopy();
+            }}
+        }});
+    }})();
+    </script>
+    """, height=36, scrolling=False)
 
 
 def format_date(iso_str: str) -> str:

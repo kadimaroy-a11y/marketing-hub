@@ -251,46 +251,63 @@ def parse_content_sections(content: str) -> dict:
 # =============================================================
 def copy_button(text: str, uid: str):
     """Render a copy-to-clipboard button, labels follow UI language."""
-    safe_js    = json.dumps(text)
-    btn_id     = f"btn_{uid}"
-    copy_lbl   = t["copy_btn"]
-    copied_lbl = t["copied_btn"]
+    # Sanitize uid → valid HTML id and JS identifier
+    safe_uid   = "".join(c if c.isalnum() else "_" for c in uid)
+    btn_id     = f"b_{safe_uid}"
+    # json.dumps with ensure_ascii avoids any non-ASCII in the script;
+    # replace </ to prevent </script> breakout inside <script> tags.
+    safe_js    = json.dumps(text,             ensure_ascii=True).replace("</", "<\\/")
+    copy_lbl   = json.dumps(t["copy_btn"],    ensure_ascii=True)
+    copied_lbl = json.dumps(t["copied_btn"],  ensure_ascii=True)
 
     components.html(f"""
     <button id="{btn_id}"
-        onclick="(function(){{
-            var txt = {safe_js};
-            var btn = document.getElementById('{btn_id}');
-            function onCopied() {{
-                btn.innerHTML = '{copied_lbl}';
-                btn.style.background = '#4CAF50';
-                setTimeout(function() {{
-                    btn.innerHTML = '{copy_lbl}';
-                    btn.style.background = '#6c63ff';
-                }}, 2000);
-            }}
-            function fallback() {{
-                var el = document.createElement('textarea');
-                el.value = txt;
-                el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
-                document.body.appendChild(el);
-                el.select();
-                try {{ document.execCommand('copy'); }} catch(e) {{}}
-                document.body.removeChild(el);
-                onCopied();
-            }}
-            var clip = (window.parent || window).navigator.clipboard;
-            if (clip && clip.writeText) {{
-                clip.writeText(txt).then(onCopied).catch(fallback);
-            }} else {{
-                fallback();
-            }}
-        }})()
-        "
         style="background:#6c63ff;color:white;border:none;padding:5px 14px;
-               border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;"
-    >{copy_lbl}</button>
-    """, height=36, scrolling=False)
+               border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;
+               white-space:nowrap;">
+        {t["copy_btn"]}
+    </button>
+    <script>
+    (function() {{
+        var text      = {safe_js};
+        var copyLbl   = {copy_lbl};
+        var copiedLbl = {copied_lbl};
+        var btn = document.getElementById('{btn_id}');
+        if (!btn) return;
+
+        function onCopied() {{
+            btn.textContent = copiedLbl;
+            btn.style.background = '#4CAF50';
+            setTimeout(function() {{
+                btn.textContent = copyLbl;
+                btn.style.background = '#6c63ff';
+            }}, 2000);
+        }}
+
+        function legacyCopy() {{
+            var inp = document.createElement('input');
+            inp.setAttribute('readonly', '');
+            inp.value = text;
+            inp.style.cssText = 'position:absolute;left:-9999px;top:0;opacity:0;';
+            document.body.appendChild(inp);
+            inp.focus();
+            inp.select();
+            inp.setSelectionRange(0, inp.value.length);
+            try {{ document.execCommand('copy'); }} catch(e) {{}}
+            document.body.removeChild(inp);
+            onCopied();
+        }}
+
+        btn.addEventListener('click', function() {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText(text).then(onCopied).catch(legacyCopy);
+            }} else {{
+                legacyCopy();
+            }}
+        }});
+    }})();
+    </script>
+    """, height=40, scrolling=False)
 
 
 # =============================================================
