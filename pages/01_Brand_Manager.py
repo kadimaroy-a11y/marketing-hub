@@ -110,6 +110,7 @@ if "bm_selected_key"   not in st.session_state: st.session_state.bm_selected_key
 if "bm_creating_new"   not in st.session_state: st.session_state.bm_creating_new   = False
 if "bm_delete_confirm" not in st.session_state: st.session_state.bm_delete_confirm = False
 if "bm_save_ok"        not in st.session_state: st.session_state.bm_save_ok        = False
+if "bm_ev_add_ctr"     not in st.session_state: st.session_state.bm_ev_add_ctr     = 0
 
 
 # =============================================================
@@ -677,7 +678,9 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
                             st.rerun()
 
                         # Add new event
-                        new_ev_key = f"{sk}_new_ev_{month_str}"
+                        # Use a counter in the key so rerun creates a fresh empty input
+                        ctr = st.session_state.bm_ev_add_ctr
+                        new_ev_key = f"{sk}_new_ev_{month_str}_{ctr}"
                         new_ev = st.text_input(
                             "new_event",
                             placeholder=t["bm_events_new_placeholder"],
@@ -693,7 +696,7 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
                                 ev_data.setdefault(month_str, []).append(
                                     {"text": new_ev.strip(), "active": True}
                                 )
-                                st.session_state[new_ev_key] = ""
+                                st.session_state.bm_ev_add_ctr += 1
                                 st.rerun()
 
     # ════════════════════════════════════════════════════════
