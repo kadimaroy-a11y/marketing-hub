@@ -144,6 +144,30 @@ st.markdown("""
         margin-bottom: 2px;
     }
 
+    /* ── Hebrew image prompt (two-column dual-language display) ── */
+    .he-image-prompt {
+        direction: rtl;
+        text-align: right;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.75;
+        background: #faf5ff;
+        padding: 16px 20px;
+        border-radius: 10px;
+        border-right: 4px solid #9f7aea;
+        color: #2d1b4e;
+        white-space: pre-wrap;
+        min-height: 50px;
+        margin-bottom: 2px;
+    }
+    .lang-badge {
+        font-size: 11px;
+        font-weight: 700;
+        color: #777;
+        padding: 2px 0 5px 0;
+        letter-spacing: 0.3px;
+    }
+
     /* ── Version label ── */
     .version-label {
         font-size: 12px;
@@ -329,26 +353,61 @@ def display_content_sections(content: str, uid_prefix: str = "sec",
         if not text:
             continue
 
-        col_chk, col_title, col_btn = st.columns([1, 6, 2])
-        with col_chk:
-            st.checkbox(
-                " ",
-                value=st.session_state.get(f"sec_sel_{key}", True),
-                key=f"sec_sel_{key}",
-                help=title,
-                label_visibility="visible",
-            )
-        with col_title:
-            st.markdown(
-                f'<div class="section-header">{emoji} {title}</div>',
-                unsafe_allow_html=True,
-            )
-        with col_btn:
-            copy_button(text, uid=f"{uid_prefix}_{i}")
+        is_dual = key == "image_prompt" and "---HE---" in text
 
-        css_class = "ltr-output" if key == "image_prompt" else "rtl-output"
-        safe = html_lib.escape(text)
-        st.markdown(f'<div class="{css_class}">{safe}</div>', unsafe_allow_html=True)
+        if is_dual:
+            # ── Dual-language image prompt: EN + HE side by side ──
+            col_chk, col_title = st.columns([1, 8])
+            with col_chk:
+                st.checkbox(
+                    " ",
+                    value=st.session_state.get(f"sec_sel_{key}", True),
+                    key=f"sec_sel_{key}",
+                    help=title,
+                    label_visibility="visible",
+                )
+            with col_title:
+                st.markdown(
+                    f'<div class="section-header">{emoji} {title}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            parts   = text.split("---HE---", 1)
+            en_text = parts[0].strip()
+            he_text = parts[1].strip() if len(parts) > 1 else ""
+
+            col_en, col_he = st.columns(2)
+            with col_en:
+                st.markdown('<div class="lang-badge">🇬🇧 English — AI Generator</div>', unsafe_allow_html=True)
+                safe_en = html_lib.escape(en_text)
+                st.markdown(f'<div class="ltr-output">{safe_en}</div>', unsafe_allow_html=True)
+                copy_button(en_text, uid=f"{uid_prefix}_{i}_en")
+            with col_he:
+                st.markdown('<div class="lang-badge">🇮🇱 עברית — לצוות היצירתי</div>', unsafe_allow_html=True)
+                safe_he = html_lib.escape(he_text)
+                st.markdown(f'<div class="he-image-prompt">{safe_he}</div>', unsafe_allow_html=True)
+                copy_button(he_text, uid=f"{uid_prefix}_{i}_he")
+        else:
+            col_chk, col_title, col_btn = st.columns([1, 6, 2])
+            with col_chk:
+                st.checkbox(
+                    " ",
+                    value=st.session_state.get(f"sec_sel_{key}", True),
+                    key=f"sec_sel_{key}",
+                    help=title,
+                    label_visibility="visible",
+                )
+            with col_title:
+                st.markdown(
+                    f'<div class="section-header">{emoji} {title}</div>',
+                    unsafe_allow_html=True,
+                )
+            with col_btn:
+                copy_button(text, uid=f"{uid_prefix}_{i}")
+
+            css_class = "ltr-output" if key == "image_prompt" else "rtl-output"
+            safe = html_lib.escape(text)
+            st.markdown(f'<div class="{css_class}">{safe}</div>', unsafe_allow_html=True)
 
         if i < len(cfg) - 1:
             st.markdown('<div style="margin-bottom:6px;"></div>', unsafe_allow_html=True)
@@ -673,12 +732,21 @@ def build_initial_user_prompt(
 גרסה מקוצרת ומדויקת לסטורי (1-3 שורות + CTA).
 
 🖼️ פרומפט לתמונה (AI Image Generator)
-Write in English. A detailed, ready-to-use prompt for an AI image generator (Midjourney / DALL-E / Artlist / Canva).
+Provide TWO versions of the image prompt:
+
+ENGLISH (for AI image generator):
+A detailed, ready-to-use prompt for Midjourney / DALL-E / Artlist / Canva.
 Include: subject, style, mood, lighting, colors, composition. Make it on-brand for {brand['name']}.
 Format: one flowing paragraph, max 80 words.
 
+---HE---
+
+עברית (לצוות היצירתי):
+תרגום מדויק ומותאם של הפרומפט לעברית — לשימוש הצוות היצירתי הישראלי.
+פסקה אחת, עד 80 מילים.
+
 ---
-כתוב בעברית בלבד (חוץ מהפרומפט לתמונה שהוא באנגלית). שמור על הטון האותנטי של {brand['name']}.
+כתוב בעברית בלבד (חוץ מהפרומפט לתמונה). שמור על הטון האותנטי של {brand['name']}.
 """
 
 

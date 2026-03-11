@@ -140,6 +140,28 @@ st.markdown(f"""
         white-space: pre-wrap;
         margin-bottom: 6px;
     }}
+    /* Hebrew image prompt (dual-language two-column) */
+    .section-box-img-he {{
+        direction: rtl;
+        text-align: right;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        line-height: 1.7;
+        background: #faf5ff;
+        padding: 12px 16px;
+        border-radius: 8px;
+        border-right: 3px solid #9f7aea;
+        color: #2d1b4e;
+        white-space: pre-wrap;
+        margin-bottom: 6px;
+    }}
+    .lang-badge-cl {{
+        font-size: 11px;
+        font-weight: 700;
+        color: #777;
+        padding: 2px 0 4px 0;
+        letter-spacing: 0.3px;
+    }}
     .brand-group-header {{
         background: linear-gradient(135deg, #f4f4fb 0%, #ebe8ff 100%);
         border-radius: 10px;
@@ -303,26 +325,51 @@ def render_item_card(item: dict):
                 if not text:
                     continue
 
-                col_t, col_b = st.columns([7, 2])
-                with col_t:
+                is_dual = key == "image_prompt" and "---HE---" in text
+
+                if is_dual:
                     st.markdown(
                         f'<div class="section-label">{sec_emoji} {title}</div>',
                         unsafe_allow_html=True,
                     )
-                with col_b:
-                    copy_btn(
-                        text,
-                        uid=f"{item_id}_{key}",
-                        copy_label=t["cl_copy_btn"],
-                        copied_label=t["cl_copied_btn"],
-                    )
+                    parts   = text.split("---HE---", 1)
+                    en_text = parts[0].strip()
+                    he_text = parts[1].strip() if len(parts) > 1 else ""
 
-                css = "section-box-img" if key == "image_prompt" else "section-box"
-                safe_text = html_lib.escape(text)
-                st.markdown(
-                    f'<div class="{css}">{safe_text}</div>',
-                    unsafe_allow_html=True,
-                )
+                    col_en, col_he = st.columns(2)
+                    with col_en:
+                        st.markdown('<div class="lang-badge-cl">🇬🇧 English — AI Generator</div>', unsafe_allow_html=True)
+                        safe_en = html_lib.escape(en_text)
+                        st.markdown(f'<div class="section-box-img">{safe_en}</div>', unsafe_allow_html=True)
+                        copy_btn(en_text, uid=f"{item_id}_{key}_en",
+                                 copy_label=t["cl_copy_btn"], copied_label=t["cl_copied_btn"])
+                    with col_he:
+                        st.markdown('<div class="lang-badge-cl">🇮🇱 עברית — לצוות היצירתי</div>', unsafe_allow_html=True)
+                        safe_he = html_lib.escape(he_text)
+                        st.markdown(f'<div class="section-box-img-he">{safe_he}</div>', unsafe_allow_html=True)
+                        copy_btn(he_text, uid=f"{item_id}_{key}_he",
+                                 copy_label=t["cl_copy_btn"], copied_label=t["cl_copied_btn"])
+                else:
+                    col_t, col_b = st.columns([7, 2])
+                    with col_t:
+                        st.markdown(
+                            f'<div class="section-label">{sec_emoji} {title}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    with col_b:
+                        copy_btn(
+                            text,
+                            uid=f"{item_id}_{key}",
+                            copy_label=t["cl_copy_btn"],
+                            copied_label=t["cl_copied_btn"],
+                        )
+
+                    css = "section-box-img" if key == "image_prompt" else "section-box"
+                    safe_text = html_lib.escape(text)
+                    st.markdown(
+                        f'<div class="{css}">{safe_text}</div>',
+                        unsafe_allow_html=True,
+                    )
         else:
             # Fallback: show raw content
             safe_content = html_lib.escape(content)
