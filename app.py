@@ -713,29 +713,25 @@ def build_initial_user_prompt(
 - הוק או כיתוב לדוגמה (2-3 שורות)
 """
 
-    # ── Mandatory events: inject directly into user prompt ─────
+    # ── Events: append directly into the brief text ─────────────
     from datetime import datetime as _dt
-    _cur_month   = str(_dt.now().month)
-    _ev_list     = (brand.get("scheduled_events") or {}).get(_cur_month, [])
-    _active_evs  = [e["text"] for e in _ev_list
-                    if e.get("active", True) and e.get("text", "").strip()]
-    mandatory_events_block = ""
+    _cur_month  = str(_dt.now().month)
+    _ev_list    = (brand.get("scheduled_events") or {}).get(_cur_month, [])
+    _active_evs = [e["text"] for e in _ev_list
+                   if e.get("active", True) and e.get("text", "").strip()]
     if _active_evs:
-        ev_lines = "\n".join(f"  • {e}" for e in _active_evs)
-        mandatory_events_block = f"""
-🚨 אירועים שחייבים להופיע בכיתוב — ללא יוצא מהכלל
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-הצוות סימן את האירועים הבאים כחובה לחודש זה.
-הם חייבים להופיע ישירות ובמפורש בטקסט הכיתוב הראשי.
-לא רמיזה. לא ברקע. ציון ישיר ומפורש בגוף הכיתוב.
-{ev_lines}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
+        ev_lines    = "\n".join(f"• {e}" for e in _active_evs)
+        enriched_brief = (
+            f"{brief}\n\n"
+            f"📅 אירועים לציון בכיתוב (חובה לשלב בתוכן):\n{ev_lines}"
+        )
+    else:
+        enriched_brief = brief
 
     return f"""צור {content_info.get('label', content_type)} עבור {brand['name']} לפרסום ב-{platform.upper()}.
-{mandatory_events_block}
+
 הבריף:
-{brief}
+{enriched_brief}
 
 {"הערות נוספות: " + additional_notes if additional_notes else ""}
 
@@ -914,6 +910,22 @@ with col_controls:
         height=70,
         disabled=st.session_state.has_content,
     )
+
+    # ── Show active events for current month ─────────────────────
+    from datetime import datetime as _dt_ui
+    _ui_month   = str(_dt_ui.now().month)
+    _ui_evs_raw = (selected_brand.get("scheduled_events") or {}).get(_ui_month, [])
+    _ui_evs     = [e["text"] for e in _ui_evs_raw
+                   if e.get("active", True) and e.get("text", "").strip()]
+    if _ui_evs:
+        ev_html = "".join(f"<li>{html_lib.escape(e)}</li>" for e in _ui_evs)
+        st.markdown(
+            f'<div style="background:#fff3cd;border-radius:8px;padding:10px 14px;'
+            f'margin:6px 0 10px 0;border-right:4px solid #e6a817;direction:rtl;text-align:right;">'
+            f'<strong>📅 אירועים פעילים לחודש זה (יכללו בתוכן):</strong>'
+            f'<ul style="margin:4px 0 0 0;padding-right:20px;">{ev_html}</ul></div>',
+            unsafe_allow_html=True,
+        )
 
     with st.expander(t["tips_brief_header"]):
         st.markdown(t["tips_brief_table"])
