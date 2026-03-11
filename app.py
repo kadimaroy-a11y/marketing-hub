@@ -15,7 +15,12 @@ import html as html_lib
 from dotenv import load_dotenv
 from db import load_brands
 from brand_profiles import CONTENT_TYPES, BRAND_PROFILES as _FALLBACK_PROFILES
+import importlib, sys
+if "web_reader" in sys.modules:
+    importlib.reload(sys.modules["web_reader"])
 from web_reader import get_brand_awareness, get_product_links
+if "translations" in sys.modules:
+    importlib.reload(sys.modules["translations"])
 from content_db import add_to_library
 from translations import get_t, get_section_config
 
