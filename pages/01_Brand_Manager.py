@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 from db import (
-    load_brands, save_brand, delete_brand,
+    load_brands, save_brand, save_brands, delete_brand,
     brand_key_from_name, get_brand_with_defaults, EMPTY_BRAND
 )
 import importlib, sys
@@ -133,6 +133,29 @@ def sl(key, fallback=None):
     if val is None:
         return fallback or []
     return text_to_list(val)
+
+
+def _autosave_events(sk: str, ev_data: dict):
+    """Persist ev_data to brands_db.json immediately (no Save button needed)."""
+    scheduled_events = {}
+    for m_str, m_evs in (ev_data or {}).items():
+        saved = [{"text": e["text"].strip(), "active": e.get("active", True)}
+                 for e in m_evs if e.get("text", "").strip()]
+        if saved:
+            scheduled_events[m_str] = saved
+    all_brands = load_brands()
+    if sk in all_brands:
+        all_brands[sk]["scheduled_events"] = scheduled_events
+        save_brands(all_brands)
+
+
+def _on_ev_checkbox_change(sk: str, ev_state_key: str, month_str: str, ev_idx: int, ck: str):
+    """Called by st.checkbox on_change — syncs new active value and auto-saves."""
+    ev_data = st.session_state.get(ev_state_key) or {}
+    new_val = st.session_state.get(ck, True)
+    if month_str in ev_data and ev_idx < len(ev_data[month_str]):
+        ev_data[month_str][ev_idx]["active"] = new_val
+    _autosave_events(sk, ev_data)
 
 
 def collect_brand_from_form(sk: str, current: dict) -> dict:
@@ -625,7 +648,7 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
             )
         ev_data = st.session_state[ev_state_key] or {}
 
-        st.warning("💾 אחרי כל שינוי — לחץ **שמור** למטה כדי לשמר את האירועים.")
+        st.caption("✅ אירועים נשמרים אוטומטית — אין צורך ללחוץ שמור.")
         months  = t["bm_months"]   # list of 12 month names
 
         for row_start in range(0, 12, 3):
@@ -659,15 +682,13 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
                             ev_col, del_col = st.columns([5, 1])
                             ck = f"{sk}_ev_{month_str}_{ev_idx}_active"
                             with ev_col:
-                                checked = st.checkbox(
+                                st.checkbox(
                                     event["text"],
                                     value=event.get("active", True),
                                     key=ck,
+                                    on_change=_on_ev_checkbox_change,
+                                    args=(sk, ev_state_key, month_str, ev_idx, ck),
                                 )
-                                # Sync checkbox state back to ev_data
-                                if ck in st.session_state:
-                                    ev_data.setdefault(month_str, [])[ev_idx]["active"] = \
-                                        st.session_state[ck]
                             with del_col:
                                 if st.button(
                                     "🗑️",
@@ -678,6 +699,7 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
 
                         if del_triggered is not None:
                             ev_data.get(month_str, []).pop(del_triggered)
+                            _autosave_events(sk, ev_data)
                             st.rerun()
 
                         # Add new event
@@ -699,6 +721,7 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
                                 ev_data.setdefault(month_str, []).append(
                                     {"text": new_ev.strip(), "active": True}
                                 )
+                                _autosave_events(sk, ev_data)
                                 st.session_state.bm_ev_add_ctr += 1
                                 st.rerun()
 

@@ -713,8 +713,27 @@ def build_initial_user_prompt(
 - הוק או כיתוב לדוגמה (2-3 שורות)
 """
 
-    return f"""צור {content_info.get('label', content_type)} עבור {brand['name']} לפרסום ב-{platform.upper()}.
+    # ── Mandatory events: inject directly into user prompt ─────
+    from datetime import datetime as _dt
+    _cur_month   = str(_dt.now().month)
+    _ev_list     = (brand.get("scheduled_events") or {}).get(_cur_month, [])
+    _active_evs  = [e["text"] for e in _ev_list
+                    if e.get("active", True) and e.get("text", "").strip()]
+    mandatory_events_block = ""
+    if _active_evs:
+        ev_lines = "\n".join(f"  • {e}" for e in _active_evs)
+        mandatory_events_block = f"""
+🚨 אירועים שחייבים להופיע בכיתוב — ללא יוצא מהכלל
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+הצוות סימן את האירועים הבאים כחובה לחודש זה.
+הם חייבים להופיע ישירות ובמפורש בטקסט הכיתוב הראשי.
+לא רמיזה. לא ברקע. ציון ישיר ומפורש בגוף הכיתוב.
+{ev_lines}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
 
+    return f"""צור {content_info.get('label', content_type)} עבור {brand['name']} לפרסום ב-{platform.upper()}.
+{mandatory_events_block}
 הבריף:
 {brief}
 
