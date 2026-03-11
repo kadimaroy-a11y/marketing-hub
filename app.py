@@ -512,7 +512,7 @@ def _build_events_section(brand: dict) -> str:
     """Inject active scheduled events for the current month into the prompt."""
     from datetime import datetime as _dt
     current_month = str(_dt.now().month)
-    events = brand.get("scheduled_events", {}).get(current_month, [])
+    events = (brand.get("scheduled_events") or {}).get(current_month, [])
     active = [e["text"] for e in events if e.get("active", True) and e.get("text", "").strip()]
     if not active:
         return ""

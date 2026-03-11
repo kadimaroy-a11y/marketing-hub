@@ -619,10 +619,13 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
         current_month_num = datetime.now().month
         ev_state_key = f"{sk}_ev_data"
         if ev_state_key not in st.session_state:
+            # use `or {}` to guard against null/None in the DB
             st.session_state[ev_state_key] = copy.deepcopy(
-                brand.get("scheduled_events", {})
+                brand.get("scheduled_events") or {}
             )
-        ev_data = st.session_state[ev_state_key]
+        ev_data = st.session_state[ev_state_key] or {}
+
+        st.warning("💾 אחרי כל שינוי — לחץ **שמור** למטה כדי לשמר את האירועים.")
         months  = t["bm_months"]   # list of 12 month names
 
         for row_start in range(0, 12, 3):
@@ -728,7 +731,7 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
 
             # Collect scheduled events
             ev_state_key = f"{sk}_ev_data"
-            ev_data = st.session_state.get(ev_state_key, {})
+            ev_data = st.session_state.get(ev_state_key) or {}
             scheduled_events = {}
             for month_str, month_events in ev_data.items():
                 saved_ev = []
