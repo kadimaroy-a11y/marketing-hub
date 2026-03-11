@@ -56,6 +56,9 @@ EMPTY_BRAND = {
     # Phase 2 — Web Awareness: list of curated URLs the agent reads before generating
     # Each entry: { "active": bool, "name": str, "url": str, "focus": str, "ignore": str }
     "web_sources": [],
+    # Phase 3 — Scheduled Events: monthly events injected into generated content
+    # { "1": [{"text": str, "active": bool}, ...], ..., "12": [...] }
+    "scheduled_events": {},
 }
 
 

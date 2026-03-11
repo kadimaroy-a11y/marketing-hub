@@ -3,6 +3,8 @@
 # =============================================================
 import sys
 import os
+import copy
+from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
@@ -346,6 +348,7 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
         t["bm_tab_platforms"],
         t["bm_tab_kb"],
         t["bm_tab_web"],
+        t["bm_tab_events"],
     ])
 
     # ════════════════════════════════════════════════════════
@@ -606,6 +609,94 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
             st.markdown(t["bm_tips_sources_table"])
 
     # ════════════════════════════════════════════════════════
+    # TAB 8: Scheduled Events 📅
+    # ════════════════════════════════════════════════════════
+    with tabs[7]:
+        st.markdown(t["bm_events_header"])
+        st.caption(t["bm_events_caption"])
+
+        current_month_num = datetime.now().month
+        ev_state_key = f"{sk}_ev_data"
+        if ev_state_key not in st.session_state:
+            st.session_state[ev_state_key] = copy.deepcopy(
+                brand.get("scheduled_events", {})
+            )
+        ev_data = st.session_state[ev_state_key]
+        months  = t["bm_months"]   # list of 12 month names
+
+        for row_start in range(0, 12, 3):
+            cols = st.columns(3)
+            for col_idx in range(3):
+                month_num  = row_start + col_idx + 1
+                month_str  = str(month_num)
+                month_name = months[month_num - 1]
+                is_current = (month_num == current_month_num)
+
+                with cols[col_idx]:
+                    with st.container(border=True):
+                        # Month header
+                        if is_current:
+                            st.markdown(
+                                f"**📅 {month_name}** &nbsp;"
+                                f"<span style='color:#4CAF50;font-size:11px;'>"
+                                f"{t['bm_events_current_badge']}</span>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(f"**📅 {month_name}**")
+
+                        # Existing events
+                        month_events = ev_data.get(month_str, [])
+                        if not month_events:
+                            st.caption(t["bm_events_no_events"])
+
+                        del_triggered = None
+                        for ev_idx, event in enumerate(month_events):
+                            ev_col, del_col = st.columns([5, 1])
+                            ck = f"{sk}_ev_{month_str}_{ev_idx}_active"
+                            with ev_col:
+                                checked = st.checkbox(
+                                    event["text"],
+                                    value=event.get("active", True),
+                                    key=ck,
+                                )
+                                # Sync checkbox state back to ev_data
+                                if ck in st.session_state:
+                                    ev_data.setdefault(month_str, [])[ev_idx]["active"] = \
+                                        st.session_state[ck]
+                            with del_col:
+                                if st.button(
+                                    "🗑️",
+                                    key=f"{sk}_del_ev_{month_str}_{ev_idx}",
+                                    help="מחק",
+                                ):
+                                    del_triggered = ev_idx
+
+                        if del_triggered is not None:
+                            ev_data.get(month_str, []).pop(del_triggered)
+                            st.rerun()
+
+                        # Add new event
+                        new_ev_key = f"{sk}_new_ev_{month_str}"
+                        new_ev = st.text_input(
+                            "new_event",
+                            placeholder=t["bm_events_new_placeholder"],
+                            key=new_ev_key,
+                            label_visibility="collapsed",
+                        )
+                        if st.button(
+                            t["bm_events_add_btn"],
+                            key=f"{sk}_add_ev_{month_str}",
+                            use_container_width=True,
+                        ):
+                            if new_ev.strip():
+                                ev_data.setdefault(month_str, []).append(
+                                    {"text": new_ev.strip(), "active": True}
+                                )
+                                st.session_state[new_ev_key] = ""
+                                st.rerun()
+
+    # ════════════════════════════════════════════════════════
     # SAVE & DELETE BUTTONS
     # ════════════════════════════════════════════════════════
     st.markdown("---")
@@ -631,6 +722,24 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
                     })
             updated["web_sources"] = saved_sources
             st.session_state[src_key] = saved_sources
+
+            # Collect scheduled events
+            ev_state_key = f"{sk}_ev_data"
+            ev_data = st.session_state.get(ev_state_key, {})
+            scheduled_events = {}
+            for month_str, month_events in ev_data.items():
+                saved_ev = []
+                for ev_idx, ev in enumerate(month_events):
+                    ck = f"{sk}_ev_{month_str}_{ev_idx}_active"
+                    active = st.session_state.get(ck, ev.get("active", True))
+                    if ev.get("text", "").strip():
+                        saved_ev.append({
+                            "text": ev["text"].strip(),
+                            "active": active,
+                        })
+                if saved_ev:
+                    scheduled_events[month_str] = saved_ev
+            updated["scheduled_events"] = scheduled_events
 
             save_brand(sk, updated)
             st.session_state.bm_save_ok        = True

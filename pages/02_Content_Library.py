@@ -6,6 +6,7 @@ import os
 import json
 import html as html_lib
 from datetime import datetime
+from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -58,7 +59,6 @@ with st.sidebar:
 
 # =============================================================
 # STYLING
-# UI chrome follows language direction; content boxes always RTL
 # =============================================================
 st.markdown(f"""
 <style>
@@ -140,6 +140,15 @@ st.markdown(f"""
         white-space: pre-wrap;
         margin-bottom: 6px;
     }}
+    .brand-group-header {{
+        background: linear-gradient(135deg, #f4f4fb 0%, #ebe8ff 100%);
+        border-radius: 10px;
+        padding: 10px 16px;
+        margin: 12px 0 6px 0;
+        border-right: 4px solid #6c63ff;
+        direction: {D};
+        text-align: {A};
+    }}
     .empty-state {{
         background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
         border-radius: 12px;
@@ -197,24 +206,26 @@ def copy_btn(text: str, uid: str, copy_label: str = "📋 העתק", copied_labe
     bid  = f"cbtn_{uid}"
     components.html(f"""
     <button id="{bid}"
-        onclick="
+        onclick="(function(){{
             var t={safe};
             var cl={cl};
             var cpl={cpl};
             var b=document.getElementById('{bid}');
-            if(navigator.clipboard&&navigator.clipboard.writeText){{
-                navigator.clipboard.writeText(t).then(function(){{
-                    b.innerHTML=cpl;b.style.background='#4CAF50';
-                    setTimeout(function(){{b.innerHTML=cl;b.style.background='#6c63ff';}},2000);
-                }});
-            }}else{{
-                var e=document.createElement('textarea');e.value=t;
-                e.style.position='fixed';e.style.opacity='0';
-                document.body.appendChild(e);e.select();
-                document.execCommand('copy');document.body.removeChild(e);
-                b.innerHTML=cpl;
-                setTimeout(function(){{b.innerHTML=cl;}},2000);
+            function onCopied(){{
+                b.innerHTML=cpl;b.style.background='#4CAF50';
+                setTimeout(function(){{b.innerHTML=cl;b.style.background='#6c63ff';}},2000);
             }}
+            function fallback(){{
+                var e=document.createElement('textarea');
+                e.value=t;e.style.cssText='position:fixed;opacity:0;top:0;left:0;';
+                document.body.appendChild(e);e.select();
+                try{{document.execCommand('copy');}}catch(ex){{}}
+                document.body.removeChild(e);onCopied();
+            }}
+            var clip=(window.parent||window).navigator.clipboard;
+            if(clip&&clip.writeText){{clip.writeText(t).then(onCopied).catch(fallback);}}
+            else{{fallback();}}
+        }})()
         "
         style="background:#6c63ff;color:white;border:none;padding:4px 12px;
                border-radius:6px;cursor:pointer;font-size:12px;font-family:Arial;"
@@ -228,6 +239,105 @@ def format_date(iso_str: str) -> str:
         return dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
         return iso_str
+
+
+def render_item_card(item: dict):
+    """Render a single content card (used in both flat and grouped views)."""
+    item_id = item.get("id", "")
+    emoji   = item.get("brand_emoji", "🏢")
+    bname   = item.get("brand_name", "")
+    plat    = item.get("platform", "")
+    ctype   = item.get("content_type", "")
+    brief   = item.get("brief", "")
+    content = item.get("content", "")
+    saved   = format_date(item.get("saved_at", ""))
+    notes   = item.get("notes", "")
+
+    card_label = f"{emoji} {bname} · {plat} · {ctype}"
+
+    with st.expander(f"{card_label}  —  {saved}", expanded=False):
+
+        # Meta row
+        st.markdown(
+            f'<div class="card-meta">{t["cl_saved_label"]} {saved} &nbsp;|&nbsp; '
+            f'📡 {plat} &nbsp;|&nbsp; 📄 {ctype}</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Brief
+        if brief:
+            safe_brief = html_lib.escape(brief)
+            st.markdown(
+                f'<div class="card-brief">💡 {safe_brief}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Parsed sections
+        sections = parse_sections(content)
+
+        if sections:
+            for key, sec_emoji, title in SECTION_CONFIG:
+                text = sections.get(key, "")
+                if not text:
+                    continue
+
+                col_t, col_b = st.columns([7, 2])
+                with col_t:
+                    st.markdown(
+                        f'<div class="section-label">{sec_emoji} {title}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with col_b:
+                    copy_btn(
+                        text,
+                        uid=f"{item_id}_{key}",
+                        copy_label=t["cl_copy_btn"],
+                        copied_label=t["cl_copied_btn"],
+                    )
+
+                css = "section-box-img" if key == "image_prompt" else "section-box"
+                safe_text = html_lib.escape(text)
+                st.markdown(
+                    f'<div class="{css}">{safe_text}</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            # Fallback: show raw content
+            safe_content = html_lib.escape(content)
+            st.markdown(
+                f'<div class="section-box">{safe_content}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Copy all button
+        st.markdown("")
+        copy_btn(
+            content,
+            uid=f"{item_id}_all",
+            copy_label=t["cl_copy_btn"],
+            copied_label=t["cl_copied_btn"],
+        )
+        st.caption(t["cl_copy_full_caption"])
+
+        # Notes
+        st.markdown("")
+        new_notes = st.text_area(
+            t["cl_notes_label"],
+            value=notes,
+            placeholder=t["cl_notes_placeholder"],
+            height=70,
+            key=f"notes_{item_id}",
+            label_visibility="visible",
+        )
+        nc1, nc2 = st.columns([2, 1])
+        with nc1:
+            if st.button(t["cl_save_notes_btn"], key=f"save_notes_{item_id}"):
+                update_notes(item_id, new_notes)
+                st.success(t["cl_notes_saved"])
+        with nc2:
+            if st.button(t["cl_delete_btn"], key=f"del_{item_id}"):
+                delete_from_library(item_id)
+                st.rerun()
 
 
 # =============================================================
@@ -345,106 +455,42 @@ if not filtered:
     st.stop()
 
 # =============================================================
-# CONTENT CARDS
+# CONTENT CARDS — brand-grouped when showing all, flat otherwise
 # =============================================================
 st.markdown(f"**{t['cl_items_count'].format(n=len(filtered))}**")
 
-for item in filtered:
-    item_id = item.get("id", "")
-    emoji   = item.get("brand_emoji", "🏢")
-    bname   = item.get("brand_name", "")
-    plat    = item.get("platform", "")
-    ctype   = item.get("content_type", "")
-    brief   = item.get("brief", "")
-    content = item.get("content", "")
-    saved   = format_date(item.get("saved_at", ""))
-    notes   = item.get("notes", "")
+if filter_brand == "all":
+    # ── Brand-grouped view ────────────────────────────────────
+    # Preserve display order: use ordered dict keyed by brand
+    seen_brands = []
+    brand_groups: dict = defaultdict(list)
+    for item in filtered:
+        bk = item.get("brand_key", "")
+        if bk not in seen_brands:
+            seen_brands.append(bk)
+        brand_groups[bk].append(item)
 
-    card_label = f"{emoji} {bname} · {plat} · {ctype}"
+    for bk in seen_brands:
+        items_in_group = brand_groups[bk]
+        brand_info     = brands.get(bk, {})
+        brand_emoji    = brand_info.get("emoji", "🏢")
+        brand_name     = brand_info.get("name", bk)
+        count          = len(items_in_group)
 
-    with st.expander(f"{card_label}  —  {saved}", expanded=False):
-
-        # Meta row
         st.markdown(
-            f'<div class="card-meta">{t["cl_saved_label"]} {saved} &nbsp;|&nbsp; '
-            f'📡 {plat} &nbsp;|&nbsp; 📄 {ctype}</div>',
+            f'<div class="brand-group-header">'
+            f'<strong>{brand_emoji} {brand_name}</strong>'
+            f'&nbsp;&nbsp;<span style="font-size:12px;color:#888;">{count} פריטים</span>'
+            f'</div>',
             unsafe_allow_html=True,
         )
+        for item in items_in_group:
+            render_item_card(item)
 
-        # Brief
-        if brief:
-            safe_brief = html_lib.escape(brief)
-            st.markdown(
-                f'<div class="card-brief">💡 {safe_brief}</div>',
-                unsafe_allow_html=True,
-            )
-
-        # Parsed sections
-        sections = parse_sections(content)
-
-        if sections:
-            for key, sec_emoji, title in SECTION_CONFIG:
-                text = sections.get(key, "")
-                if not text:
-                    continue
-
-                col_t, col_b = st.columns([7, 2])
-                with col_t:
-                    st.markdown(
-                        f'<div class="section-label">{sec_emoji} {title}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with col_b:
-                    copy_btn(
-                        text,
-                        uid=f"{item_id}_{key}",
-                        copy_label=t["cl_copy_btn"],
-                        copied_label=t["cl_copied_btn"],
-                    )
-
-                css = "section-box-img" if key == "image_prompt" else "section-box"
-                safe_text = html_lib.escape(text)
-                st.markdown(
-                    f'<div class="{css}">{safe_text}</div>',
-                    unsafe_allow_html=True,
-                )
-        else:
-            # Fallback: show raw content
-            safe_content = html_lib.escape(content)
-            st.markdown(
-                f'<div class="section-box">{safe_content}</div>',
-                unsafe_allow_html=True,
-            )
-
-        # Copy all button
-        st.markdown("")
-        copy_btn(
-            content,
-            uid=f"{item_id}_all",
-            copy_label=t["cl_copy_btn"],
-            copied_label=t["cl_copied_btn"],
-        )
-        st.caption(t["cl_copy_full_caption"])
-
-        # Notes
-        st.markdown("")
-        new_notes = st.text_area(
-            t["cl_notes_label"],
-            value=notes,
-            placeholder=t["cl_notes_placeholder"],
-            height=70,
-            key=f"notes_{item_id}",
-            label_visibility="visible",
-        )
-        nc1, nc2 = st.columns([2, 1])
-        with nc1:
-            if st.button(t["cl_save_notes_btn"], key=f"save_notes_{item_id}"):
-                update_notes(item_id, new_notes)
-                st.success(t["cl_notes_saved"])
-        with nc2:
-            if st.button(t["cl_delete_btn"], key=f"del_{item_id}"):
-                delete_from_library(item_id)
-                st.rerun()
+else:
+    # ── Flat view for single-brand filter ─────────────────────
+    for item in filtered:
+        render_item_card(item)
 
 # =============================================================
 # FOOTER

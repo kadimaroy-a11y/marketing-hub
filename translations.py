@@ -234,6 +234,23 @@ TRANSLATIONS = {
         # Empty state
         "bm_empty_title":           "אין מותגים עדיין",
         "bm_empty_sub":             "לחץ על ➕ מותג חדש כדי להתחיל",
+        # Scheduled Events tab
+        "bm_tab_events":            "📅 אירועים",
+        "bm_events_header":         "#### 📅 אירועים מתוכננים לפי חודש",
+        "bm_events_caption":        "סמן אירועים פעילים — הם יוזרקו אוטומטית לתוכן שנוצר באותו חודש.",
+        "bm_events_add_btn":        "➕ הוסף",
+        "bm_events_new_placeholder":"שם האירוע...",
+        "bm_events_no_events":      "אין אירועים. לחץ ➕ להוסיף.",
+        "bm_events_current_badge":  "🟢 החודש",
+        "bm_months": [
+            "ינואר","פברואר","מרץ","אפריל","מאי","יוני",
+            "יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר",
+        ],
+        # Section selection (app.py save area)
+        "sec_select_label":         "📌 בחר סקשנים לשמירה:",
+        # Content Library brand grouping
+        "cl_brand_all_header":      "📁 כל התכנים — לפי מותג",
+        "cl_expand_brand":          "הצג",
 
         # ── Content Library ────────────────────────────────────────
         "cl_title":                 "📚 ספריית תוכן",
@@ -491,6 +508,23 @@ TRANSLATIONS = {
         # Empty state
         "bm_empty_title":           "No Brands Yet",
         "bm_empty_sub":             "Click ➕ New Brand to get started",
+        # Scheduled Events tab
+        "bm_tab_events":            "📅 Events",
+        "bm_events_header":         "#### 📅 Scheduled Events by Month",
+        "bm_events_caption":        "Check active events — they are automatically injected into content generated that month.",
+        "bm_events_add_btn":        "➕ Add",
+        "bm_events_new_placeholder":"Event name...",
+        "bm_events_no_events":      "No events. Click ➕ to add.",
+        "bm_events_current_badge":  "🟢 This Month",
+        "bm_months": [
+            "January","February","March","April","May","June",
+            "July","August","September","October","November","December",
+        ],
+        # Section selection (app.py save area)
+        "sec_select_label":         "📌 Select sections to save:",
+        # Content Library brand grouping
+        "cl_brand_all_header":      "📁 All Content — by Brand",
+        "cl_expand_brand":          "Show",
 
         # ── Content Library ────────────────────────────────────────
         "cl_title":                 "📚 Content Library",

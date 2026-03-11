@@ -258,26 +258,34 @@ def copy_button(text: str, uid: str):
 
     components.html(f"""
     <button id="{btn_id}"
-        onclick="
+        onclick="(function(){{
             var txt = {safe_js};
             var btn = document.getElementById('{btn_id}');
-            if (navigator.clipboard && navigator.clipboard.writeText) {{
-                navigator.clipboard.writeText(txt).then(function() {{
-                    btn.innerHTML = '{copied_lbl}';
-                    btn.style.background = '#4CAF50';
-                    setTimeout(function() {{
-                        btn.innerHTML = '{copy_lbl}';
-                        btn.style.background = '#6c63ff';
-                    }}, 2000);
-                }});
-            }} else {{
-                var el = document.createElement('textarea');
-                el.value = txt; el.style.position='fixed'; el.style.opacity='0';
-                document.body.appendChild(el); el.select();
-                document.execCommand('copy'); document.body.removeChild(el);
+            function onCopied() {{
                 btn.innerHTML = '{copied_lbl}';
-                setTimeout(function() {{ btn.innerHTML = '{copy_lbl}'; }}, 2000);
+                btn.style.background = '#4CAF50';
+                setTimeout(function() {{
+                    btn.innerHTML = '{copy_lbl}';
+                    btn.style.background = '#6c63ff';
+                }}, 2000);
             }}
+            function fallback() {{
+                var el = document.createElement('textarea');
+                el.value = txt;
+                el.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+                document.body.appendChild(el);
+                el.select();
+                try {{ document.execCommand('copy'); }} catch(e) {{}}
+                document.body.removeChild(el);
+                onCopied();
+            }}
+            var clip = (window.parent || window).navigator.clipboard;
+            if (clip && clip.writeText) {{
+                clip.writeText(txt).then(onCopied).catch(fallback);
+            }} else {{
+                fallback();
+            }}
+        }})()
         "
         style="background:#6c63ff;color:white;border:none;padding:5px 14px;
                border-radius:6px;cursor:pointer;font-size:13px;font-family:Arial;"
@@ -304,7 +312,15 @@ def display_content_sections(content: str, uid_prefix: str = "sec",
         if not text:
             continue
 
-        col_title, col_btn = st.columns([7, 2])
+        col_chk, col_title, col_btn = st.columns([1, 6, 2])
+        with col_chk:
+            st.checkbox(
+                " ",
+                value=st.session_state.get(f"sec_sel_{key}", True),
+                key=f"sec_sel_{key}",
+                help=title,
+                label_visibility="visible",
+            )
         with col_title:
             st.markdown(
                 f'<div class="section-header">{emoji} {title}</div>',
@@ -408,6 +424,45 @@ def display_full_history_for_streaming(messages_list: list):
 # =============================================================
 # PROMPT BUILDERS
 # =============================================================
+def _build_events_section(brand: dict) -> str:
+    """Inject active scheduled events for the current month into the prompt."""
+    from datetime import datetime as _dt
+    current_month = str(_dt.now().month)
+    events = brand.get("scheduled_events", {}).get(current_month, [])
+    active = [e["text"] for e in events if e.get("active", True) and e.get("text", "").strip()]
+    if not active:
+        return ""
+    lines = "\n".join(f"  🗓️ {e}" for e in active)
+    return (
+        "\n\n═══════════════════════════════════════\n"
+        " 📅 אירועים פעילים החודש\n"
+        "═══════════════════════════════════════\n\n"
+        "האירועים הבאים מתוכננים לחודש הנוכחי — שלב אותם בתוכן כשרלוונטי:\n\n"
+        + lines
+    )
+
+
+# Emoji headers used when reconstructing selective-save content
+_SECTION_HEADERS = {
+    "caption":      "📝 כיתוב ראשי",
+    "hashtags":     "#️⃣ האשטגים",
+    "visual":       "🎬 כיוון ויזואלי",
+    "story":        "📱 גרסת סטורי",
+    "image_prompt": "🖼️ פרומפט לתמונה",
+}
+
+
+def build_save_content(content: str) -> str:
+    """Return content string containing only the user-selected sections."""
+    sections = parse_content_sections(content)
+    result = ""
+    for key, emoji, title in SECTION_CONFIG:
+        if st.session_state.get(f"sec_sel_{key}", True) and sections.get(key):
+            result += _SECTION_HEADERS.get(key, f"{emoji} {title}") + "\n"
+            result += sections[key] + "\n\n"
+    return result.strip() or content
+
+
 def _build_product_links_section(product_links: str) -> str:
     if not product_links or not product_links.strip():
         return ""
@@ -506,7 +561,7 @@ def build_system_prompt(brand_key: str, web_awareness: str = "", product_links: 
 - שמור על אותו פורמט (📝 כיתוב ראשי / #️⃣ האשטגים / 🎬 כיוון ויזואלי / 📱 גרסת סטורי / 🖼️ פרומפט לתמונה)
 - אלא אם התבקשת במפורש לשנות את הפורמט
 - החזר את הפוסט המעודכן במלואו, מוכן לפרסום
-{_build_knowledge_base_section(brand)}{_build_product_links_section(product_links)}{_build_web_awareness_section(web_awareness)}"""
+{_build_knowledge_base_section(brand)}{_build_product_links_section(product_links)}{_build_events_section(brand)}{_build_web_awareness_section(web_awareness)}"""
 
 
 def _build_knowledge_base_section(brand: dict) -> str:
@@ -676,6 +731,10 @@ with col_controls:
                     else False if isinstance(st.session_state[k], bool) \
                     else None
             st.session_state.input_counter = 0
+            # Reset section selection checkboxes
+            for sec_key in list(st.session_state.keys()):
+                if sec_key.startswith("sec_sel_"):
+                    del st.session_state[sec_key]
             st.rerun()
         st.divider()
 
@@ -931,7 +990,19 @@ with col_output:
             if st.session_state.library_saved:
                 st.info(t["library_saved_info"])
             else:
+                # Section selection hint
+                sections_exist = bool(
+                    parse_content_sections(st.session_state.latest_content)
+                )
+                if sections_exist:
+                    st.markdown(
+                        f'<div style="font-size:12px;color:#888;margin-bottom:4px;">'
+                        f'{t["sec_select_label"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
                 if st.button(t["save_library_btn"], type="primary", use_container_width=True):
+                    content_to_save = build_save_content(st.session_state.latest_content)
                     add_to_library({
                         "brand_key":    st.session_state.saved_brand_key,
                         "brand_name":   st.session_state.saved_brand,
@@ -939,7 +1010,7 @@ with col_output:
                         "platform":     st.session_state.saved_platform,
                         "content_type": st.session_state.saved_type,
                         "brief":        st.session_state.saved_brief,
-                        "content":      st.session_state.latest_content,
+                        "content":      content_to_save,
                         "notes":        "",
                     })
                     st.session_state.library_saved = True
