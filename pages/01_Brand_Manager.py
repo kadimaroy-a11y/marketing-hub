@@ -752,9 +752,10 @@ if st.session_state.bm_selected_key and not st.session_state.bm_creating_new:
             updated["web_sources"] = saved_sources
             st.session_state[src_key] = saved_sources
 
-            # Collect scheduled events
+            # Collect scheduled events — fall back to DB value if Events tab
+            # was never visited this session (avoids wiping saved events)
             ev_state_key = f"{sk}_ev_data"
-            ev_data = st.session_state.get(ev_state_key) or {}
+            ev_data = st.session_state.get(ev_state_key) or (brand.get("scheduled_events") or {})
             scheduled_events = {}
             for month_str, month_events in ev_data.items():
                 saved_ev = []
