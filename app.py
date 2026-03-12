@@ -7,6 +7,7 @@
 # =============================================================
 
 import json
+import re
 import streamlit as st
 import streamlit.components.v1 as components
 import anthropic
@@ -271,6 +272,37 @@ def parse_content_sections(content: str) -> dict:
 
 
 # =============================================================
+# VERSION SPLITTER — for multi-version responses
+# =============================================================
+def split_versions(content: str) -> list:
+    """Split multi-version Claude output into [(label, body)] pairs.
+
+    Returns [("", content)] when no multi-version markers are found.
+    Handles common Claude patterns: **גרסה 1:**, גרסה 2, ### Version 3, etc.
+    Requires at least 2 markers to trigger splitting.
+    """
+    sep_re = re.compile(
+        r'(?m)^[ \t]*(?:[*#>\-]{1,3}[ \t]*)*'      # optional markdown prefix
+        r'(?:גרסה|גירסה|version)[ \t]*(\d+)'        # version keyword + number
+        r'(?:[ \t]*[*:#>\-]{0,3})[ \t]*$',          # optional suffix
+        re.IGNORECASE,
+    )
+    splits = list(sep_re.finditer(content))
+    if len(splits) < 2:
+        return [("", content)]
+    results = []
+    for i, m in enumerate(splits):
+        raw_label = content[m.start():m.end()].strip()
+        label     = re.sub(r'[*#_~`>\-]', '', raw_label).strip()
+        body_start = m.end()
+        body_end   = splits[i + 1].start() if i + 1 < len(splits) else len(content)
+        body = content[body_start:body_end].strip()
+        if body:
+            results.append((label or f"גרסה {i + 1}", body))
+    return results or [("", content)]
+
+
+# =============================================================
 # COPY BUTTON — language-aware labels
 # =============================================================
 def copy_button(text: str, uid: str):
@@ -338,8 +370,14 @@ def copy_button(text: str, uid: str):
 # SECTION DISPLAY — parsed boxes with copy buttons
 # =============================================================
 def display_content_sections(content: str, uid_prefix: str = "sec",
-                              section_config: list = None):
-    """Parse content and render each section as its own box + copy button."""
+                              section_config: list = None,
+                              show_checkboxes: bool = True):
+    """Parse content and render each section as its own box + copy button.
+
+    show_checkboxes=False is used for multi-version display to avoid
+    Streamlit duplicate-key errors across versions (each version reuses
+    the same section keys like 'caption', 'hashtags', etc.).
+    """
     cfg      = section_config or SECTION_CONFIG
     sections = parse_content_sections(content)
 
@@ -356,17 +394,23 @@ def display_content_sections(content: str, uid_prefix: str = "sec",
         is_dual = key == "image_prompt" and "---HE---" in text
 
         if is_dual:
-            # ── Dual-language image prompt: EN + HE side by side ──
-            col_chk, col_title = st.columns([1, 8])
-            with col_chk:
-                st.checkbox(
-                    " ",
-                    value=st.session_state.get(f"sec_sel_{key}", True),
-                    key=f"sec_sel_{key}",
-                    help=title,
-                    label_visibility="visible",
-                )
-            with col_title:
+            # ── Dual-language image prompt ────────────────────────
+            if show_checkboxes:
+                col_chk, col_title = st.columns([1, 8])
+                with col_chk:
+                    st.checkbox(
+                        " ",
+                        value=st.session_state.get(f"sec_sel_{key}", True),
+                        key=f"sec_sel_{key}",
+                        help=title,
+                        label_visibility="visible",
+                    )
+                with col_title:
+                    st.markdown(
+                        f'<div class="section-header">{emoji} {title}</div>',
+                        unsafe_allow_html=True,
+                    )
+            else:
                 st.markdown(
                     f'<div class="section-header">{emoji} {title}</div>',
                     unsafe_allow_html=True,
@@ -396,22 +440,32 @@ def display_content_sections(content: str, uid_prefix: str = "sec",
             safe_en = html_lib.escape(en_text)
             st.markdown(f'<div class="ltr-output">{safe_en}</div>', unsafe_allow_html=True)
         else:
-            col_chk, col_title, col_btn = st.columns([1, 6, 2])
-            with col_chk:
-                st.checkbox(
-                    " ",
-                    value=st.session_state.get(f"sec_sel_{key}", True),
-                    key=f"sec_sel_{key}",
-                    help=title,
-                    label_visibility="visible",
-                )
-            with col_title:
-                st.markdown(
-                    f'<div class="section-header">{emoji} {title}</div>',
-                    unsafe_allow_html=True,
-                )
-            with col_btn:
-                copy_button(text, uid=f"{uid_prefix}_{i}")
+            if show_checkboxes:
+                col_chk, col_title, col_btn = st.columns([1, 6, 2])
+                with col_chk:
+                    st.checkbox(
+                        " ",
+                        value=st.session_state.get(f"sec_sel_{key}", True),
+                        key=f"sec_sel_{key}",
+                        help=title,
+                        label_visibility="visible",
+                    )
+                with col_title:
+                    st.markdown(
+                        f'<div class="section-header">{emoji} {title}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with col_btn:
+                    copy_button(text, uid=f"{uid_prefix}_{i}")
+            else:
+                col_title, col_btn = st.columns([7, 2])
+                with col_title:
+                    st.markdown(
+                        f'<div class="section-header">{emoji} {title}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with col_btn:
+                    copy_button(text, uid=f"{uid_prefix}_{i}")
 
             css_class = "ltr-output" if key == "image_prompt" else "rtl-output"
             safe = html_lib.escape(text)
@@ -1072,11 +1126,35 @@ with col_output:
             unsafe_allow_html=True,
         )
 
-        display_content_sections(
-            st.session_state.latest_content,
-            uid_prefix=f"v{improvement_count}",
-            section_config=SECTION_CONFIG,
-        )
+        # ── Split into individual versions if Claude returned multiple ──
+        _versions = split_versions(st.session_state.latest_content)
+        if len(_versions) == 1:
+            display_content_sections(
+                st.session_state.latest_content,
+                uid_prefix=f"v{improvement_count}",
+                section_config=SECTION_CONFIG,
+                show_checkboxes=True,
+            )
+        else:
+            for _vi, (_ver_label, _ver_body) in enumerate(_versions):
+                st.markdown(
+                    f'<div style="font-size:14px;font-weight:700;color:#4a4a8a;'
+                    f'margin:18px 0 8px 0;direction:rtl;text-align:right;'
+                    f'border-bottom:2px solid #6c63ff;padding-bottom:5px;">'
+                    f'📄 {html_lib.escape(_ver_label)}</div>',
+                    unsafe_allow_html=True,
+                )
+                display_content_sections(
+                    _ver_body,
+                    uid_prefix=f"v{improvement_count}_v{_vi}",
+                    section_config=SECTION_CONFIG,
+                    show_checkboxes=False,
+                )
+                if _vi < len(_versions) - 1:
+                    st.markdown(
+                        '<div style="margin:20px 0;border-top:2px dashed #d0d5ff;"></div>',
+                        unsafe_allow_html=True,
+                    )
 
         # ── Refinement input ──────────────────────────────────
         if not st.session_state.approved:
