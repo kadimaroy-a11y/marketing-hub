@@ -277,29 +277,70 @@ def parse_content_sections(content: str) -> dict:
 def split_versions(content: str) -> list:
     """Split multi-version Claude output into [(label, body)] pairs.
 
-    Returns [("", content)] when no multi-version markers are found.
-    Handles common Claude patterns: **גרסה 1:**, גרסה 2, ### Version 3, etc.
-    Requires at least 2 markers to trigger splitting.
+    Returns [("", content)] for single-version content.
+
+    Three strategies tried in order:
+    1. Unambiguous ===גרסה N=== markers (enforced by the prompt)
+    2. Permissive keyword regex — allows subtitles after the version number
+    3. Count 📝 caption markers — one per version (last resort)
     """
-    sep_re = re.compile(
-        r'(?m)^[ \t]*(?:[*#>\-]{1,3}[ \t]*)*'      # optional markdown prefix
-        r'(?:גרסה|גירסה|version)[ \t]*(\d+)'        # version keyword + number
-        r'(?:[ \t]*[*:#>\-]{0,3})[ \t]*$',          # optional suffix
+    def _build(splits_iter, content):
+        results = []
+        splits_iter = list(splits_iter)
+        for i, m in enumerate(splits_iter):
+            raw = content[m.start():m.end()].strip()
+            label = re.sub(r'[=*#_~`>\-:]+', ' ', raw).strip()
+            label = re.sub(r'\s+', ' ', label).strip()
+            body_start = m.end()
+            body_end   = splits_iter[i + 1].start() if i + 1 < len(splits_iter) else len(content)
+            body = content[body_start:body_end].strip()
+            if body:
+                results.append((label or f"גרסה {i + 1}", body))
+        return results
+
+    # ── Strategy 1: ===גרסה N=== (prompt-enforced) ─────────────
+    s1 = re.compile(r'(?m)^[ \t]*===[ \t]*(?:גרסה|גירסה|version)[ \t]*\d+[ \t]*===[ \t]*$',
+                    re.IGNORECASE)
+    r1 = _build(s1.finditer(content), content)
+    if len(r1) >= 2:
+        return r1
+
+    # ── Strategy 2: permissive keyword — allow any subtitle text ─
+    s2 = re.compile(
+        r'(?m)^[ \t]*(?:[*#>\-=~]{1,4}[ \t]*)?'   # optional prefix markup
+        r'(?:גרסה|גירסה|version)[ \t]*(\d+)'       # keyword + number
+        r'[^\n]*$',                                  # anything else on the line
         re.IGNORECASE,
     )
-    splits = list(sep_re.finditer(content))
-    if len(splits) < 2:
+    r2 = _build(s2.finditer(content), content)
+    if len(r2) >= 2:
+        return r2
+
+    # ── Strategy 3: one 📝 per version ────────────────────────────
+    caps = [m.start() for m in re.finditer(r'📝', content)]
+    if len(caps) < 2:
         return [("", content)]
     results = []
-    for i, m in enumerate(splits):
-        raw_label = content[m.start():m.end()].strip()
-        label     = re.sub(r'[*#_~`>\-]', '', raw_label).strip()
-        body_start = m.end()
-        body_end   = splits[i + 1].start() if i + 1 < len(splits) else len(content)
-        body = content[body_start:body_end].strip()
+    for i, pos in enumerate(caps):
+        end = caps[i + 1] if i + 1 < len(caps) else len(content)
+        body = content[pos:end].strip()
+        # Strip trailing version header that belongs to the next version
+        body = re.sub(
+            r'\n[ \t]*(?:[*#>\-=~]{1,4}[ \t]*)?(?:גרסה|גירסה|version)[ \t]*\d+[^\n]*$',
+            '', body, flags=re.IGNORECASE,
+        ).strip()
+        # Try to extract a label from the preamble before this 📝
+        pre_start = caps[i - 1] if i > 0 else 0
+        preamble  = content[pre_start:pos]
+        label     = f"גרסה {i + 1}"
+        for line in reversed(preamble.split('\n')):
+            cl = re.sub(r'[=*#_~`>\-:]+', ' ', line).strip()
+            if re.search(r'(?:גרסה|גירסה|version)[ \t]*\d', cl, re.IGNORECASE):
+                label = re.sub(r'\s+', ' ', cl).strip()
+                break
         if body:
-            results.append((label or f"גרסה {i + 1}", body))
-    return results or [("", content)]
+            results.append((label, body))
+    return results if len(results) >= 2 else [("", content)]
 
 
 # =============================================================
@@ -752,7 +793,10 @@ def build_initial_user_prompt(
     platform_details = brand["platforms"].get(platform.lower(), {})
 
     versions_instruction = (
-        f"\nצור {num_versions} גרסאות שונות, ממוספרות בבירור."
+        f"\nצור {num_versions} גרסאות שונות.\n"
+        f"חובה: התחל כל גרסה בדיוק בשורה: ===גרסה N=== (N = מספר הגרסה).\n"
+        f"דוגמה: ===גרסה 1=== ואחריה ===גרסה 2=== וכן הלאה.\n"
+        f"כל גרסה חייבת לכלול את כל החלקים: 📝, #️⃣, 🎬, 📱, 🖼️."
         if num_versions > 1 else ""
     )
 
