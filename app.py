@@ -24,6 +24,7 @@ if "translations" in sys.modules:
     importlib.reload(sys.modules["translations"])
 from content_db import add_to_library
 from translations import get_t, get_section_config
+from marketing_brain import build_marketing_expertise
 
 # Load brands from JSON database; fall back to brand_profiles.py if db is empty
 BRAND_PROFILES = load_brands() or _FALLBACK_PROFILES
@@ -661,7 +662,7 @@ def _build_product_links_section(product_links: str) -> str:
     )
 
 
-def build_system_prompt(brand_key: str, web_awareness: str = "", product_links: str = "") -> str:
+def build_system_prompt(brand_key: str, web_awareness: str = "", product_links: str = "", platform: str = "", content_type: str = "") -> str:
     brand = BRAND_PROFILES[brand_key]
 
     products_str = "\n".join([f"  • {p}" for p in brand["products"]])
@@ -743,7 +744,9 @@ def build_system_prompt(brand_key: str, web_awareness: str = "", product_links: 
 - שמור על אותו פורמט (📝 כיתוב ראשי / #️⃣ האשטגים / 🎬 כיוון ויזואלי / 📱 גרסת סטורי / 🖼️ פרומפט לתמונה)
 - אלא אם התבקשת במפורש לשנות את הפורמט
 - החזר את הפוסט המעודכן במלואו, מוכן לפרסום
-{_build_knowledge_base_section(brand)}{_build_product_links_section(product_links)}{_build_events_section(brand)}{_build_web_awareness_section(web_awareness)}"""
+{_build_knowledge_base_section(brand)}{_build_top_examples_section(brand_key)}{_build_product_links_section(product_links)}{_build_events_section(brand)}{_build_web_awareness_section(web_awareness)}
+
+{build_marketing_expertise(platform, content_type) if platform else ""}"""
 
 
 def _build_knowledge_base_section(brand: dict) -> str:
@@ -772,6 +775,37 @@ def _build_knowledge_base_section(brand: dict) -> str:
             " ידע נצבר מניסיון הצוות\n"
             "═══════════════════════════════════════\n\n" +
             "\n\n".join(sections))
+
+
+def _build_top_examples_section(brand_key: str) -> str:
+    """Inject top-performing past content as reference examples for Claude."""
+    try:
+        from content_db import get_top_performing
+        top_items = get_top_performing(brand_key, limit=5)
+    except Exception:
+        return ""
+    if not top_items:
+        return ""
+    examples = []
+    for i, item in enumerate(top_items, 1):
+        rating = item.get("performance_rating", "good")
+        note   = item.get("performance_note", "")
+        brief  = item.get("brief", "")[:100]
+        ctype  = item.get("content_type", "")
+        plat   = item.get("platform", "")
+        content_preview = item.get("content", "")[:300]
+        entry = f"דוגמה {i} ({rating}) — {ctype} ל-{plat}:\n  בריף: {brief}"
+        if note:
+            entry += f"\n  ביצועים: {note}"
+        entry += f"\n  תוכן:\n{content_preview}"
+        if len(item.get("content", "")) > 300:
+            entry += "..."
+        examples.append(entry)
+    return ("\n\n═══════════════════════════════════════\n"
+            " 🏆 דוגמאות מוצלחות מהעבר — למד מהן\n"
+            "═══════════════════════════════════════\n\n"
+            "התוכן הבא קיבל דירוג גבוה מהצוות. השתמש בו כהשראה לטון, סגנון ומבנה:\n\n" +
+            "\n\n---\n\n".join(examples))
 
 
 def _build_web_awareness_section(awareness: str) -> str:
@@ -1087,6 +1121,8 @@ with col_output:
             selected_brand_key,
             web_awareness=web_awareness,
             product_links=product_links,
+            platform=selected_platform,
+            content_type=selected_content_type,
         )
         user_prompt   = build_initial_user_prompt(
             selected_brand_key, selected_platform, selected_content_type,

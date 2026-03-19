@@ -1,15 +1,12 @@
 # =============================================================
-# DATABASE ENGINE — brands_db.json read/write
+# DATABASE ENGINE — Supabase-backed brand storage
 # =============================================================
-# All brand data lives in brands_db.json
-# This module is imported by both app.py and the Brand Manager
+# All brand data lives in a Supabase "brands" table (JSONB).
+# This module is imported by both app.py and the Brand Manager.
 # =============================================================
 
-import json
 import copy
-from pathlib import Path
-
-DB_PATH = Path(__file__).parent / "brands_db.json"
+from supabase_client import get_supabase
 
 # ── Empty brand template (used for new brands + merging defaults) ──
 EMPTY_BRAND = {
@@ -67,35 +64,33 @@ EMPTY_BRAND = {
 # =============================================================
 
 def load_brands() -> dict:
-    """Load all brands from the JSON database."""
-    if not DB_PATH.exists():
-        return {}
+    """Load all brands from Supabase."""
     try:
-        with open(DB_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
+        sb = get_supabase()
+        response = sb.table("brands").select("key, data").execute()
+        return {row["key"]: row["data"] for row in response.data}
+    except Exception:
         return {}
 
 
 def save_brands(brands: dict):
-    """Overwrite the entire brands database."""
-    with open(DB_PATH, "w", encoding="utf-8") as f:
-        json.dump(brands, f, ensure_ascii=False, indent=2)
+    """Upsert all brands (bulk save)."""
+    sb = get_supabase()
+    rows = [{"key": k, "data": v} for k, v in brands.items()]
+    if rows:
+        sb.table("brands").upsert(rows).execute()
 
 
 def save_brand(brand_key: str, brand_data: dict):
-    """Save or update a single brand (others unchanged)."""
-    brands = load_brands()
-    brands[brand_key] = brand_data
-    save_brands(brands)
+    """Save or update a single brand."""
+    sb = get_supabase()
+    sb.table("brands").upsert({"key": brand_key, "data": brand_data}).execute()
 
 
 def delete_brand(brand_key: str):
     """Delete a brand by key."""
-    brands = load_brands()
-    if brand_key in brands:
-        del brands[brand_key]
-        save_brands(brands)
+    sb = get_supabase()
+    sb.table("brands").delete().eq("key", brand_key).execute()
 
 
 def get_brand_with_defaults(brand_data: dict) -> dict:

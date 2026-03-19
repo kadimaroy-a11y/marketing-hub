@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import streamlit as st
 import streamlit.components.v1 as components
-from content_db import load_library, delete_from_library, update_notes, get_library_stats
-from db import load_brands
+from content_db import load_library, delete_from_library, update_notes, update_performance, get_library_stats
+from db import load_brands, save_brand
 import importlib, sys
 if "translations" in sys.modules:
     importlib.reload(sys.modules["translations"])
@@ -395,6 +395,76 @@ def render_item_card(item: dict):
             copied_label=t["cl_copied_btn"],
         )
         st.caption(t["cl_copy_full_caption"])
+
+        # Performance rating (AI Learning)
+        st.markdown("")
+        st.markdown(f"**{t['cl_perf_label']}**")
+        perf_options = t.get("cl_perf_options", {})
+        perf_keys    = list(perf_options.keys())
+        perf_labels  = list(perf_options.values())
+        current_rating = item.get("performance_rating", "")
+        current_idx    = perf_keys.index(current_rating) if current_rating in perf_keys else None
+
+        pc1, pc2 = st.columns([3, 4])
+        with pc1:
+            selected_label = st.selectbox(
+                t["cl_perf_label"],
+                options=perf_labels,
+                index=current_idx if current_idx is not None else 0,
+                key=f"perf_{item_id}",
+                label_visibility="collapsed",
+            )
+            selected_rating = perf_keys[perf_labels.index(selected_label)]
+        with pc2:
+            perf_note = st.text_input(
+                t["cl_perf_note_label"],
+                value=item.get("performance_note", ""),
+                placeholder=t["cl_perf_note_placeholder"],
+                key=f"perf_note_{item_id}",
+                label_visibility="collapsed",
+            )
+
+        pbc1, pbc2, pbc3 = st.columns([2, 2, 2])
+        with pbc1:
+            if st.button(t["cl_perf_save_btn"], key=f"save_perf_{item_id}"):
+                update_performance(item_id, selected_rating, perf_note)
+                st.success(t["cl_perf_saved"])
+
+        # Auto-feed to knowledge base (Phase B)
+        brand_key = item.get("brand_key", "")
+        brief_summary = item.get("brief", "")[:80]
+        if selected_rating == "amazing" and brand_key:
+            with pbc2:
+                target = "מה עובד" if lang == "he" else "What Works"
+                if st.button(t["cl_perf_add_to_kb"].format(target=target), key=f"kb_good_{item_id}"):
+                    brand_data = brands.get(brand_key, {})
+                    kb = brand_data.get("knowledge_base", {})
+                    what_works = kb.get("what_works", [])
+                    entry = f"{ctype} — {brief_summary}"
+                    if perf_note:
+                        entry += f" ({perf_note})"
+                    if entry not in what_works:
+                        what_works.append(entry)
+                        kb["what_works"] = what_works
+                        brand_data["knowledge_base"] = kb
+                        save_brand(brand_key, brand_data)
+                    st.success(t["cl_perf_added_to_kb"])
+        elif selected_rating == "poor" and brand_key:
+            with pbc2:
+                target = "מה לא עובד" if lang == "he" else "What Doesn't Work"
+                if st.button(t["cl_perf_add_to_kb"].format(target=target), key=f"kb_bad_{item_id}"):
+                    brand_data = brands.get(brand_key, {})
+                    kb = brand_data.get("knowledge_base", {})
+                    what_doesnt = kb.get("what_doesnt", [])
+                    entry = f"{ctype} — {brief_summary}"
+                    if perf_note:
+                        entry += f" ({perf_note})"
+                    if entry not in what_doesnt:
+                        what_doesnt.append(entry)
+                        kb["what_doesnt"] = what_doesnt
+                        brand_data["knowledge_base"] = kb
+                        save_brand(brand_key, brand_data)
+                    st.success(t["cl_perf_added_to_kb"])
 
         # Notes
         st.markdown("")

@@ -20,3 +20,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Temp files
+*.tmp.*
+*.url
+
+# Migration scripts (one-time use)
+migrate_to_supabase.py
