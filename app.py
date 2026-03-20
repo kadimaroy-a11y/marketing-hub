@@ -25,6 +25,7 @@ if "translations" in sys.modules:
 from content_db import add_to_library
 from translations import get_t, get_section_config
 from marketing_brain import build_marketing_expertise
+from learning_engine import build_learning_context
 
 # Load brands from JSON database; fall back to brand_profiles.py if db is empty
 BRAND_PROFILES = load_brands() or _FALLBACK_PROFILES
@@ -744,7 +745,7 @@ def build_system_prompt(brand_key: str, web_awareness: str = "", product_links: 
 - שמור על אותו פורמט (📝 כיתוב ראשי / #️⃣ האשטגים / 🎬 כיוון ויזואלי / 📱 גרסת סטורי / 🖼️ פרומפט לתמונה)
 - אלא אם התבקשת במפורש לשנות את הפורמט
 - החזר את הפוסט המעודכן במלואו, מוכן לפרסום
-{_build_knowledge_base_section(brand)}{_build_top_examples_section(brand_key)}{_build_product_links_section(product_links)}{_build_events_section(brand)}{_build_web_awareness_section(web_awareness)}
+{_build_knowledge_base_section(brand)}{build_learning_context(brand_key)}{_build_product_links_section(product_links)}{_build_events_section(brand)}{_build_web_awareness_section(web_awareness)}
 
 {build_marketing_expertise(platform, content_type) if platform else ""}"""
 

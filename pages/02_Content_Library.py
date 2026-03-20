@@ -14,6 +14,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from content_db import load_library, delete_from_library, update_notes, update_performance, get_library_stats
 from db import load_brands, save_brand
+from performance_db import record_rating
 import importlib, sys
 if "translations" in sys.modules:
     importlib.reload(sys.modules["translations"])
@@ -428,6 +429,19 @@ def render_item_card(item: dict):
         with pbc1:
             if st.button(t["cl_perf_save_btn"], key=f"save_perf_{item_id}"):
                 update_performance(item_id, selected_rating, perf_note)
+                # Also record to structured performance_metrics table
+                try:
+                    record_rating(
+                        content_id=item_id,
+                        brand_key=brand_key,
+                        platform=plat,
+                        content_type=ctype,
+                        rating=selected_rating,
+                        rating_note=perf_note,
+                        brief_summary=brief[:80] if brief else "",
+                    )
+                except Exception:
+                    pass  # Don't break UI if table doesn't exist yet
                 st.success(t["cl_perf_saved"])
 
         # Auto-feed to knowledge base (Phase B)
