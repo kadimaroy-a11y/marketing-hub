@@ -90,6 +90,8 @@ TRANSLATIONS = {
         "save_library_btn":         "📚 שמור לספריית התוכן",
         "library_saved_info":       "📚 נשמר בספריית התוכן!",
         "download_approved_btn":    "⬇️ הורד תוכן מאושר",
+        "save_version_checkbox":    "💾 שמור גרסה",
+        "no_versions_selected":     "☝️ סמן לפחות גרסה אחת לשמירה",
 
         # Footer metrics
         "brand_metric":             "מותג",
@@ -372,6 +374,8 @@ TRANSLATIONS = {
         "save_library_btn":         "📚 Save to Content Library",
         "library_saved_info":       "📚 Saved to Content Library!",
         "download_approved_btn":    "⬇️ Download Approved Content",
+        "save_version_checkbox":    "💾 Save version",
+        "no_versions_selected":     "☝️ Select at least one version to save",
 
         # Footer metrics
         "brand_metric":             "Brand",

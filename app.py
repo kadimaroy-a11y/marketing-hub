@@ -1218,13 +1218,23 @@ with col_output:
             )
         else:
             for _vi, (_ver_label, _ver_body) in enumerate(_versions):
-                st.markdown(
-                    f'<div style="font-size:14px;font-weight:700;color:#4a4a8a;'
-                    f'margin:18px 0 8px 0;direction:rtl;text-align:right;'
-                    f'border-bottom:2px solid #6c63ff;padding-bottom:5px;">'
-                    f'📄 {html_lib.escape(_ver_label)}</div>',
-                    unsafe_allow_html=True,
-                )
+                # Version header with save checkbox
+                _hdr_col, _chk_col = st.columns([5, 2])
+                with _hdr_col:
+                    st.markdown(
+                        f'<div style="font-size:14px;font-weight:700;color:#4a4a8a;'
+                        f'margin:18px 0 8px 0;direction:rtl;text-align:right;'
+                        f'border-bottom:2px solid #6c63ff;padding-bottom:5px;">'
+                        f'📄 {html_lib.escape(_ver_label)}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with _chk_col:
+                    _save_label = t.get("save_version_checkbox", "💾 שמור גרסה")
+                    st.checkbox(
+                        _save_label,
+                        value=False,
+                        key=f"save_ver_{_vi}",
+                    )
                 display_content_sections(
                     _ver_body,
                     uid_prefix=f"v{improvement_count}_v{_vi}",
@@ -1288,19 +1298,44 @@ with col_output:
                     )
 
                 if st.button(t["save_library_btn"], type="primary", use_container_width=True):
-                    content_to_save = build_save_content(st.session_state.latest_content)
-                    add_to_library({
-                        "brand_key":    st.session_state.saved_brand_key,
-                        "brand_name":   st.session_state.saved_brand,
-                        "brand_emoji":  st.session_state.saved_brand_emoji,
-                        "platform":     st.session_state.saved_platform,
-                        "content_type": st.session_state.saved_type,
-                        "brief":        st.session_state.saved_brief,
-                        "content":      content_to_save,
-                        "notes":        "",
-                    })
-                    st.session_state.library_saved = True
-                    st.rerun()
+                    _all_versions = split_versions(st.session_state.latest_content)
+                    _saved_count = 0
+
+                    if len(_all_versions) > 1:
+                        # Multi-version: save only checked versions, each as separate item
+                        for _svi, (_sv_label, _sv_body) in enumerate(_all_versions):
+                            if st.session_state.get(f"save_ver_{_svi}", False):
+                                add_to_library({
+                                    "brand_key":    st.session_state.saved_brand_key,
+                                    "brand_name":   st.session_state.saved_brand,
+                                    "brand_emoji":  st.session_state.saved_brand_emoji,
+                                    "platform":     st.session_state.saved_platform,
+                                    "content_type": st.session_state.saved_type,
+                                    "brief":        st.session_state.saved_brief,
+                                    "content":      _sv_body.strip(),
+                                    "notes":        _sv_label,
+                                })
+                                _saved_count += 1
+                        if _saved_count == 0:
+                            st.warning(t.get("no_versions_selected", "סמן לפחות גרסה אחת לשמירה ☝️"))
+                        else:
+                            st.session_state.library_saved = True
+                            st.rerun()
+                    else:
+                        # Single version: save as before
+                        content_to_save = build_save_content(st.session_state.latest_content)
+                        add_to_library({
+                            "brand_key":    st.session_state.saved_brand_key,
+                            "brand_name":   st.session_state.saved_brand,
+                            "brand_emoji":  st.session_state.saved_brand_emoji,
+                            "platform":     st.session_state.saved_platform,
+                            "content_type": st.session_state.saved_type,
+                            "brief":        st.session_state.saved_brief,
+                            "content":      content_to_save,
+                            "notes":        "",
+                        })
+                        st.session_state.library_saved = True
+                        st.rerun()
 
             st.download_button(
                 t["download_approved_btn"],
