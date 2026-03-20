@@ -306,19 +306,33 @@ if generate_clicked and brief.strip():
     st.session_state.pb_chat_display = [{"role": "user", "content": brief}]
 
     with col_preview:
-        with st.spinner(ui["generating"]):
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=12000,
-                system=system_prompt,
-                messages=st.session_state.pb_messages,
-            )
-            result = response.content[0].text
-            html_code = extract_html(result)
-            st.session_state.pb_html = html_code
-            st.session_state.pb_messages.append({"role": "assistant", "content": result})
-            st.session_state.pb_chat_display.append({"role": "assistant", "content": "✅ הדף נוצר!"})
-            st.rerun()
+        status_box = st.empty()
+        status_box.info(ui["generating"])
+        progress_bar = st.progress(0)
+
+        # Stream the response so user sees progress
+        result_chunks = []
+        with client.messages.stream(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8000,
+            system=system_prompt,
+            messages=st.session_state.pb_messages,
+        ) as stream:
+            for i, text in enumerate(stream.text_stream):
+                result_chunks.append(text)
+                # Update progress roughly
+                progress = min(0.95, len(result_chunks) / 200)
+                progress_bar.progress(progress)
+
+        progress_bar.progress(1.0)
+        result = "".join(result_chunks)
+        html_code = extract_html(result)
+        st.session_state.pb_html = html_code
+        st.session_state.pb_messages.append({"role": "assistant", "content": result})
+        st.session_state.pb_chat_display.append({"role": "assistant", "content": "✅ הדף נוצר!"})
+        status_box.empty()
+        progress_bar.empty()
+        st.rerun()
 
 
 # =============================================================
@@ -364,19 +378,31 @@ with col_preview:
             st.session_state.pb_messages.append({"role": "user", "content": refine_msg})
             st.session_state.pb_chat_display.append({"role": "user", "content": refinement})
 
-            with st.spinner(ui["generating"]):
-                response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=12000,
-                    system=st.session_state.pb_system_prompt,
-                    messages=st.session_state.pb_messages,
-                )
-                result = response.content[0].text
-                html_code = extract_html(result)
-                st.session_state.pb_html = html_code
-                st.session_state.pb_messages.append({"role": "assistant", "content": result})
-                st.session_state.pb_chat_display.append({"role": "assistant", "content": "✅ הדף עודכן!"})
-                st.rerun()
+            status_box2 = st.empty()
+            status_box2.info(ui["generating"])
+            progress_bar2 = st.progress(0)
+
+            result_chunks2 = []
+            with client.messages.stream(
+                model="claude-sonnet-4-20250514",
+                max_tokens=8000,
+                system=st.session_state.pb_system_prompt,
+                messages=st.session_state.pb_messages,
+            ) as stream:
+                for text in stream.text_stream:
+                    result_chunks2.append(text)
+                    progress = min(0.95, len(result_chunks2) / 200)
+                    progress_bar2.progress(progress)
+
+            progress_bar2.progress(1.0)
+            result = "".join(result_chunks2)
+            html_code = extract_html(result)
+            st.session_state.pb_html = html_code
+            st.session_state.pb_messages.append({"role": "assistant", "content": result})
+            st.session_state.pb_chat_display.append({"role": "assistant", "content": "✅ הדף עודכן!"})
+            status_box2.empty()
+            progress_bar2.empty()
+            st.rerun()
 
     else:
         # Empty state
